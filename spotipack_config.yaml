@@ -1,0 +1,52 @@
+user_name: "Kruxiz"                # Name of the user you are connecting as (messages will be sent via this user)
+channel_name: "Kruxiz"             # Name of the channel this bot is working on (can be same as the user name, if the streamer wants to post messages as himself)
+usage_message: "$(username), usage: !songrequest song-link (Spotify -> Share -> Copy Song Link)"  # Command is called without any arguments
+wrong_format_message: "$(username), sorry, but only Spotify Share URLs are supported"             # Command arguments are not recognized as a Spotify share link URL
+added_to_queue_messages: ["\"$(artists) - $(trackName)\" is added to the queue catJAM"] # ["message 1", "message 2"]. Successfully added the song to the queue
+song_not_found: "Sorry, I was unable to find that song on Spotify."                  # Song search returned 0 results
+max_duration: 300 # The max duration of an allowed song in seconds
+
+## REWARD / REDEEM STUFF ##
+custom_reward_id: "adf08c5e-73da-4e4c-8e5f-4ed1b25d98ef"  # reward ID for the Channel Points redemption. Required to be set if usage_type is channel_points
+automatic_refunds: TRUE # enable for automatic refunds. requires additional scopes!
+custom_reward_name: "Song Request"   # reward name
+custom_reward_cost: 500   # reward cost
+
+express_port: 8888
+logs: TRUE
+usage_types: ["command", "channel_points"] # can include "channel_points", "command" & "bits"
+command_alias: ["!songrequest", "!sr"] # ["a", "b", ...] all valid aliases to request songs if usage mode is "command"
+command_user_level: ["everyone"] # ["streamer", "mod", "vip", "sub", "everyone"]. Remove /add one or several for different user levels. Don't forget commas between options
+use_song_command: TRUE # add !song command that displays currently playing song. FALSE if you don't want it
+use_queue_command: TRUE # add !queue command that displays songs currently in the queue. FALSE if you don't want it
+queue_display_depth: 5 # limits the amount of songs that are displayed when a user types !queue. - default is 5
+minimum_requred_bits: 1 # works if usage mode is set to "bits"
+use_exact_amount_of_bits: FALSE # should we treat only a specific amount of bits as a trigger to song requests?
+
+## SKIP STUFF ##
+skip_alias: "!skip" # alias for the "Skip Song" command
+skip_user_level: ["streamer", "vip","mod"] # ["streamer", "mod", "vip", "everyone"]. Remove /add one or several for different user levels. Don't forget commas between options
+
+allow_vote_skip: TRUE # allow users without special privileges to vote on skipping the song. FALSE if you don't want it
+required_vote_skip: 2 # sets required number of votes to skip a song, if allow_vote_skip is TRUE
+voteskip_timeout: 17 # waits for a number seconds between each user skipping, or cancels the skipvote otherwise. Default is a 17 because 2 people couldn't agree what was too long or too short.
+
+## MISC STUFF ##
+allow_volume_set: TRUE # allow users with special privileges (set below) to set the volume remotely
+volume_set_level: ["streamer", "mod"] # ["streamer", "mod", "vip", "everyone"]. Remove /add one or several for different user levels. Don't forget commas between options
+ignore_max_length: ["streamer", "mod"] # ["streamer", "mod", "vip", "everyone"]. Remove /add one or several for different user levels. Don't forget commas between options
+clip_user_level: ["streamer", "mod", "vip"] # ["streamer", "mod", "vip", "everyone"]. Remove /add one or several for different user levels. Don't forget commas between options
+
+## COMMAND COOLDOWN ##
+use_cooldown: FALSE # TRUE or FALSE to enable or disable command cooldown
+cooldown_duration: 60 # How long a user has to wait in between song requests in seconds
+
+## BLOCKED TRACKS ##
+blocked_tracks: [""]
+
+# List of ENV variables required at the start:
+# SPOTIFY_CLIENT_ID
+# SPOTIFY_CLIENT_SECRET
+# TWITCH_OAUTH_TOKEN
+# TWITCH_CLIENT_ID - optional for auto-refunds
+# TWITCH_OAUTH_TOKEN_REFUNDS - optional for auto-refunds
