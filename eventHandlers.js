@@ -1,9 +1,7 @@
 // eventHandlers.js
-//const { handleGetVolume} = require('./commands/volume.js').handleGetVolume;
-//const { handleSetVolume } = require('./commands/volume.js').handleSetVolume;
-const {handleGetVolume, handleSetVolume} = require('./commands/volume.js');
-const { handleSongRequest, validateSongRequest, addValidatedSongToQueue, addSongToQueue } = require('./commands/handleSongRequest.js');
-//const currentConfig = require('./config.js').currentConfig;
+// Require the Commannd Handlers
+const { handleSongRequest, validateSongRequest, addValidatedSongToQueue, addSongToQueue } = require('./commands/songRequests.js');
+const { handleQueue, handleGetVolume, handleSetVolume, handleTrackName, handleVoteSkip} = require('./commands/player.js');
 // ... import other handlers
 const { isUserEligible } = require('./utils.js');
 const { log } = require('./logger.js');
@@ -25,58 +23,73 @@ const displayNameTag = 'display-name';
 function registerEventHandlers(client, twitchAPI, spotifyAPI, currentConfig) {
     client.on('message', async (channel, tags, message, self) => {
         if (self) return;
-        let messageToLower = message.toLowerCase();
- 
+    
+        const messageToLower = message.toLowerCase();
+        const command = messageToLower.split(" ")[0];
+        const args = messageToLower.split(" ").slice(1);
+    
         if (currentConfig.usage_types.includes(commandUsageType)
-            && currentConfig.command_alias.includes(messageToLower.split(" ")[0])
+            && currentConfig.command_alias.includes(command)
             && isUserEligible(channel, tags, currentConfig.command_user_level)) {
-            let args = messageToLower.split(" ")[1];
-            if (!args) {
+            
+            if (!args.length) {
                 client.say(currentConfig.channel_name, `${tags[displayNameTag]}, usage: !songrequest song-link (Spotify -> Share -> Copy Song Link)`);
             } else {
                 await handleSongRequest(client, channel, tags[displayNameTag], message, tags, twitchAPI, spotifyAPI, currentConfig);
             }
-        } else if (currentConfig.allow_volume_set && messageToLower.split(" ")[0] == '!volume') {
-            let args = messageToLower.split(" ")[1];
-            if (!args) {
-                await handleGetVolume(client, channel, tags, currentConfig, spotifyAPI);
-            } else {
-                await handleSetVolume(client, channel, tags, args, currentConfig, spotifyAPI);
-            }
+    
+            return; // stop here if handled
         }
-        else if (messageToLower === currentConfig.skip_alias) {
-            await handleSkipSong(client, channel, tags);
-        }
-        else if (currentConfig.use_song_command && messageToLower === '!song') {
-            await handleTrackName(client, channel);
-        }
-        else if (currentConfig.use_queue_command && messageToLower === '!queue') {
-            await handleQueue(client, channel);
-        }
-        else if (currentConfig.allow_vote_skip && messageToLower === '!voteskip') {
-            await handleVoteSkip(client, channel, tags[displayNameTag]);
-        }
-        else if (messageToLower === '!clip') {
-            try{
-                let eligible = isUserEligible(channel, tags, currentConfig.clip_user_level);
-                if (eligible) {
-                    let clipUrl = await twitchAPI.createClip();
-                    if (clipUrl !== null) {
-                        client.say(channel, clipUrl);
-                    }
-                    else {
-                        client.say(channel, `There was a problem creating the clip`);
-                        return null;
-                    }
-                    return clipUrl;
+    
+        const commandHandlers = {
+            '!volume': async () => {
+                if (!args.length) {
+                    await handleGetVolume(client, channel, tags, currentConfig, spotifyAPI);
+                } else {
+                    await handleSetVolume(client, channel, tags, args[0], currentConfig, spotifyAPI);
                 }
-            } catch (error) {
-                console.log(error);
-                client.say(channel, `There was a problem creating the clip`);
-                return null;
+            },
+            [currentConfig.skip_alias]: async () => {
+                await handleSkipSong(client, channel, tags, spotifyAPI, currentConfig);
+            },
+            '!song': async () => {
+                if (currentConfig.use_song_command) {
+                    await handleTrackName(client, channel, spotifyAPI);
+                }
+            },
+            '!queue': async () => {
+                if (currentConfig.use_queue_command) {
+                    await handleQueue(client, channel, spotifyAPI, currentConfig);
+                }
+            },
+            '!voteskip': async () => {
+                if (currentConfig.allow_vote_skip) {
+                    await handleVoteSkip(client, channel, tags[displayNameTag], spotifyAPI, currentConfig);
+                }
+            },
+            '!clip': async () => {
+                if (isUserEligible(channel, tags, currentConfig.clip_user_level)) {
+                    try {
+                        const clipUrl = await twitchAPI.createClip();
+                        if (clipUrl) {
+                            client.say(channel, clipUrl);
+                        } else {
+                            client.say(channel, 'There was a problem creating the clip');
+                        }
+                    } catch (error) {
+                        console.error(error);
+                        client.say(channel, 'There was a problem creating the clip');
+                    }
+                }
             }
+        };
+    
+        const handler = commandHandlers[command];
+        if (handler) {
+            await handler();
         }
     });
+    
 
     client.on('cheer', async (channel, state, message) => {
         // existing cheer logic

@@ -72,74 +72,94 @@ module.exports = class SpotifyController {
             }
         });
 
-        // Now Playing Route
-        app.get('/now-playing', async (req, res) => {
-            const track = await this.getCurrentTrack();
+        app.get('/now-playing', (req, res) => {
             res.send(`
-                <html>
-                    <head>
-                        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
-                        <style>
-                            body {
-                                margin: 0;
-                                font-family: 'Montserrat', sans-serif;
-                                background: transparent;
-                                color: rgb(255, 255, 255);
-                            }
-
-                            .bar {
-                                height: 8px;
-                                background: white;
-                                width: 100%;
-                            }
-
-                            .track-container {
-                                display: flex;
-                                align-items: center;
-                                background: rgba(36, 6, 73, 0.15);
-                                padding: 14px 22px;
-                                border-radius: 0;
-                                animation: fadeIn 0.8s ease-in-out;
-                            }
-
-                            .spotify-logo {
-                                width: 28px;
-                                height: 28px;
-                                margin-right: 12px;
-                            }
-
-                            .track {
-                                font-size: 22px;
-                                font-weight: 600;
-                                white-space: nowrap;
-                                overflow: hidden;
-                                text-overflow: ellipsis;
-                            }
-
-                            @keyframes fadeIn {
-                                from { opacity: 0; transform: translateY(10px); }
-                                to { opacity: 1; transform: translateY(0); }
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="bar"></div>
-                        <div class="track-container">
-                            <img class="spotify-logo" src="" alt="Spotify">
-                            <div class="track">${track || 'Nothing playing right now'}</div>
-                        </div>
-                        <div class="bar"></div>
-                    </body>
-                </html>
+              <html>
+                <head>
+                  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
+                  <style>
+                    body {
+                      margin: 0;
+                      font-family: 'Montserrat', sans-serif;
+                      background: transparent;
+                      color: rgb(255, 255, 255);
+                    }
+          
+                    .bar {
+                      height: 8px;
+                      background: white;
+                      width: 100%;
+                    }
+          
+                    .track-container {
+                      display: flex;
+                      align-items: center;
+                      background: rgba(36, 6, 73, 0.15);
+                      padding: 14px 22px;
+                      border-radius: 0;
+                      animation: fadeIn 0.8s ease-in-out;
+                    }
+          
+                    .spotify-logo {
+                      width: 28px;
+                      height: 28px;
+                      margin-right: 12px;
+                    }
+          
+                    .track {
+                    font-size: clamp(36px, 3vw, 36px);
+                    font-weight: 600;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    }
+        
+          
+                    @keyframes fadeIn {
+                      from { opacity: 0; transform: translateY(10px); }
+                      to { opacity: 1; transform: translateY(0); }
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="bar"></div>
+                  <div class="track-container">
+                    <img class="spotify-logo" src="https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_White.png" alt="Spotify">
+                    <div class="track" id="track-text">Loading...</div>
+                  </div>
+                  <div class="bar"></div>
+          
+                  <script>
+                    async function fetchTrack() {
+                      try {
+                        const res = await fetch('/now-playing-track');
+                        const data = await res.text();
+                        document.getElementById('track-text').textContent = data || 'Nothing playing right now';
+                      } catch (e) {
+                        console.error('Error fetching track:', e);
+                      }
+                    }
+          
+                    fetchTrack();
+                    setInterval(fetchTrack, 5000); // Refresh every 5 seconds
+                  </script>
+                </body>
+              </html>
             `);
-        });
+          });
+        
+          app.get('/now-playing-track', async (req, res) => {
+            const track = await this.getCurrentTrack();
+            res.send(track || 'Nothing playing right now');
+          });
 
         // Start Express Server
         app.listen(port, () => {
-            console.log(`App is running. Visit ${this.redirectUri} to authenticate.`);
+            console.log(`App is running. Visit ${this.redirectUri} to refresh Spotify API tokens if the page didn't open automatically..`);
         });
 
         open(`http://localhost:${port}/login`);
+        console.log(`Now Playing overlay available at http://localhost:${port}/now-playing`);
     }
 
     // Refresh Access Token
@@ -181,13 +201,17 @@ module.exports = class SpotifyController {
     }
 
 
-    // Get the current track playing on Spotify
+    /**
+     * Retrieves the currently playing track from Spotify
+     * @returns {string} The title of the currently playing track, formatted as "Track Name - Artist(s)"
+     * @throws {Error} If there is an error fetching the current track
+     */
     async getCurrentTrack() {
         try {
             let spotifyHeaders = this.getSpotifyHeaders();
             const response = await axios.get('https://api.spotify.com/v1/me/player/currently-playing', {
                 headers: {
-                    Authorization: `Bearer ${this.accessToken}` // Replace with your valid token or dynamically fetch
+                    Authorization: `Bearer ${this.accessToken}` 
                 }
             });
     
@@ -231,7 +255,6 @@ module.exports = class SpotifyController {
     currentConfig.command_alias.forEach(alias => {
         searchString = searchString.replace(alias, '');
     });
-    log(`Search string after removing aliases: ${searchString}`, currentConfig);
     let spotifyHeaders = this.getSpotifyHeaders();
     searchString = searchString.replace(/-/, ' ');
     searchString = searchString.replace(/ by /, ' ');
@@ -247,6 +270,10 @@ module.exports = class SpotifyController {
     }
 }
 
+    /**
+     * Formats auth headers
+     * @returns {{Authorization: string}}
+     */
     getSpotifyHeaders() {
         return {
             'Authorization': `Bearer ${this.accessToken}`

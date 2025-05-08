@@ -17,9 +17,7 @@ const { log } = require('../logger.js');
  * @returns {Promise<boolean>} A promise which resolves to true if the song was added to the queue, false if the user is not eligible.
  */
 handleSongRequest = async (client, channel, username, message, tags, twitchAPI, spotifyAPI, currentConfig) => {
-    log(`Received song request from ${username}: ${message}`, currentConfig);
     let validatedSongId = await validateSongRequest(message, channel, currentConfig, spotifyAPI);
-    log(`Validated song ID: ${validatedSongId}`, currentConfig);
     if (!validatedSongId) {
         client.say(channel, currentConfig.song_not_found);
         return false;
@@ -50,27 +48,21 @@ handleSongRequest = async (client, channel, username, message, tags, twitchAPI, 
  */
 let validateSongRequest = async (message, channel, currentConfig, spotifyAPI) => {
     const parsedUrl = parseActualSongUrlFromBigMessage(message, currentConfig);
-    log(`Parsed URL: ${parsedUrl}`, currentConfig);
     if (parsedUrl) {
         const trackId = getTrackId(parsedUrl);
-        log(`Found track ID from URL: ${trackId}`, currentConfig);
         return trackId;
     }
 
     const parsedUri = parseActualSongUriFromBigMessage(message, currentConfig);
     if (parsedUri) {
-        log(`Found track ID from URI: ${parsedUri}`, currentConfig);
         return getTrackId(parsedUri);
     }
 
     try {
-        log(`Searching for track ID in message: ${message}`, currentConfig);
         const foundTrack = await spotifyAPI.searchTrackID(message, currentConfig);
-        log(`Search Found: ${foundTrack}`, currentConfig);
         if (foundTrack === false) {
             log(`No track found in search for: ${message}`, currentConfig);
         }
-        log(`Found track ID from search: ${foundTrack}`, currentConfig);
         return foundTrack;
     } catch (error) {
         if (error?.response?.data?.error?.status === 401) {
@@ -98,7 +90,6 @@ let addValidatedSongToQueue = async (client, songId, channel, callerUsername, ta
 let addSongToQueue = async (client, songId, channel, callerUsername, tags, spotifyAPI, currentConfig) => {
     
     let trackInfo = await spotifyAPI.getTrackInfo(songId);
-    log(`Track Info: ${JSON.stringify(trackInfo)}`, currentConfig);
     let trackName = trackInfo.name;
     let artists = trackInfo.artists.map(artist => artist.name).join(', ');
 
