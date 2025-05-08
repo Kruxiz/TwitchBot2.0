@@ -13,7 +13,6 @@
     //initialise the twitch controller
     const twitchAPI = new TwitchController();
     await twitchAPI.init(currentConfig);
-    console.log("Broadcaster ID after init:", twitchAPI.broadcaster_id);
 
     //define the twitch chat client
     const client = new tmi.Client({
@@ -39,9 +38,9 @@
         process.env.SPOTIFY_CLIENT_SECRET,
         currentConfig.express_port
     );
-
-    registerEventHandlers(client, twitchAPI, spotifyAPI, currentConfig);
-
     // Optionally refresh spotify token at startup
     spotifyAPI.init(currentConfig.express_port);
+ 
+    registerEventHandlers(client, twitchAPI, spotifyAPI, currentConfig);
+
 })();
