@@ -7,7 +7,7 @@
     const SpotifyController = require('./controllers/spotifyController.js');
     const registerEventHandlers = require('./eventHandlers.js');
 
-    const currentConfig = loadConfig();
+    const currentConfig = await loadConfig();
     checkForUpdates();
 
     //initialise the twitch controller
