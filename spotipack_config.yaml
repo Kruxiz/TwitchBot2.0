@@ -47,6 +47,5 @@ blocked_tracks: [""]
 # List of ENV variables required at the start:
 # SPOTIFY_CLIENT_ID
 # SPOTIFY_CLIENT_SECRET
-# TWITCH_OAUTH_TOKEN
-# TWITCH_CLIENT_ID - optional for auto-refunds
-# TWITCH_OAUTH_TOKEN_REFUNDS - optional for auto-refunds
+# TWITCH_CLIENT_ID 
+# TWITCH_CLIENT_SECRET
