@@ -13,7 +13,7 @@ module.exports = class SpotifyController {
         this.clientSecret = clientSecret;
         this.refreshToken = null;
         this.accessToken = null;
-        this.redirectUri = `http://localhost:${port}/callback`;
+        this.redirectUri = `http://127.0.0.1:${port}/callback`;
     }
     // Express Initialization Method
     init(port) {
@@ -62,9 +62,6 @@ module.exports = class SpotifyController {
                 this.accessToken = tokenResponse.data.access_token;
                 this.refreshToken = tokenResponse.data.refresh_token;
 
-                // Store the refresh token for later use
-                this.refreshToken = spotifyRefreshToken;
-                
                 res.send('Tokens refreshed successfully. You can close this tab');
             } catch (error) {
                 console.error('Error during token exchange:', error);
@@ -83,6 +80,9 @@ module.exports = class SpotifyController {
                       font-family: 'Montserrat', sans-serif;
                       background: transparent;
                       color: rgb(255, 255, 255);
+                      max-width: 800px;
+                      max-height: 92px;
+                      overflow: auto;
                     }
           
                     .bar {
@@ -92,12 +92,17 @@ module.exports = class SpotifyController {
                     }
           
                     .track-container {
-                      display: flex;
-                      align-items: center;
-                      background: rgba(36, 6, 73, 0.15);
-                      padding: 14px 22px;
-                      border-radius: 0;
-                      animation: fadeIn 0.8s ease-in-out;
+                        display: flex;
+                        align-items: center;
+                        background: rgba(36, 6, 73, 0.15);
+                        padding: 14px 22px;
+                        border-radius: 0;
+                        animation: fadeIn 0.8s ease-in-out;
+                        max-width: 800px;
+                        max-height: 92px:
+                        overflow: hidden;
+                        white-space: nowrap;
+                        text-align: center;
                     }
           
                     .spotify-logo {
@@ -105,13 +110,18 @@ module.exports = class SpotifyController {
                       height: 28px;
                       margin-right: 12px;
                     }
+
+                    .track-wrapper {
+                        flex: 1; /* Makes the text container take up the remaining space */
+                        overflow: hidden; /* Prevent the text from going outside */
+                    }
           
                     .track {
                     font-size: clamp(36px, 3vw, 36px);
                     font-weight: 600;
                     white-space: nowrap;
-                    overflow: hidden;
                     text-overflow: ellipsis;
+                    animation: scrollText 20s linear infinite;
                     }
         
           
@@ -119,13 +129,24 @@ module.exports = class SpotifyController {
                       from { opacity: 0; transform: translateY(10px); }
                       to { opacity: 1; transform: translateY(0); }
                     }
+
+                    @keyframes scrollText {
+                        0% {
+                        transform: translateX(100%); /* Start from the right */
+                        }
+                        100% {
+                        transform: translateX(-100%); /* Move to the left */
+                        }
+                    }
                   </style>
                 </head>
                 <body>
                   <div class="bar"></div>
                   <div class="track-container">
                     <img class="spotify-logo" src="https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_White.png" alt="Spotify">
+                    <div class="track-wrapper">
                     <div class="track" id="track-text">Loading...</div>
+                  </div>
                   </div>
                   <div class="bar"></div>
           
@@ -146,8 +167,8 @@ module.exports = class SpotifyController {
                 </body>
               </html>
             `);
-          });
-        
+        });
+
           app.get('/now-playing-track', async (req, res) => {
             const track = await this.getCurrentTrack();
             res.send(track || 'Nothing playing right now');
@@ -158,8 +179,8 @@ module.exports = class SpotifyController {
             console.log(`App is running. Visit ${this.redirectUri} to refresh Spotify API tokens if the page didn't open automatically..`);
         });
 
-        open(`http://localhost:${port}/login`);
-        console.log(`Now Playing overlay available at http://localhost:${port}/now-playing`);
+        open(`http://127.0.0.1:${port}/login`);
+        console.log(`Now Playing overlay available at http://127.0.0.1:${port}/now-playing`);
     }
 
     // Refresh Access Token
