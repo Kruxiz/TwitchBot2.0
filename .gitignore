@@ -125,5 +125,5 @@ bins
 
 .vscode
 controllers/twitch_token.json
+referenceConfig/spotipack_config.yaml
 referenceConfig/
-spotipack_config.yaml
