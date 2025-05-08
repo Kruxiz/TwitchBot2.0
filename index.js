@@ -17,16 +17,18 @@
 
     //define the twitch chat client
     const client = new tmi.Client({
-        connection: { secure: true, reconnect: true},
-        identity: { username: currentConfig.user_name, password: `oauth:${twitchAPI.token}` },
-        channels: [currentConfig.channel_name],
-        debug: true
+        connection: {
+            secure: true,
+            reconnect: true
+        },
+        identity: {
+            username: currentConfig.user_name,
+            password: `oauth:${twitchAPI.token}`
+        },
+        channels: [currentConfig.channel_name]
     });
-    client.on('connected', (addr, port) => {
-        console.log(`Connected to ${addr}:${port}`);
-    });
-    // Connect to Twitch chat
-    await client.connect().catch(console.error);
+
+    client.connect().catch(console.error);
     //Log the channel connection
     console.log(`Logged in as ${currentConfig.user_name} on channel ${currentConfig.channel_name}`);
 
@@ -41,5 +43,5 @@
     registerEventHandlers(client, twitchAPI, spotifyAPI, currentConfig);
 
     // Optionally refresh spotify token at startup
-    await spotifyAPI.init(currentConfig.express_port);
+    spotifyAPI.init(currentConfig.express_port);
 })();

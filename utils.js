@@ -46,10 +46,8 @@ function isUserEligible(channel, tags, rolesArray) {
  * @returns {string|null} - The extracted Spotify track URL if found, otherwise null.
  */
 function parseActualSongUrlFromBigMessage(message, currentConfig) {
-    log(`Parsing message: ${message}`, currentConfig);
     const regex = new RegExp(spotifyShareUrlMakerRegex);
     let match = message.match(regex);
-    log(`Match: ${match}`, currentConfig);
     if (match !== null) {
         return match[0];
     } else {
@@ -68,11 +66,8 @@ function parseActualSongUrlFromBigMessage(message, currentConfig) {
  * @returns {string|null} - The constructed Spotify song URL if a URI is found, otherwise null.
  */
 function parseActualSongUriFromBigMessage(message, currentConfig) {
-    log(`Parsing message: ${message}`, currentConfig);
     const regex = new RegExp(`${spotifyShareUriMaker}[^\\s]+`);
-    log(`Regex: ${regex}`, currentConfig);
     let match = message.match(regex);
-    log(`Match: ${match}`, currentConfig);
     if (match !== null) {
         spotifyIdToUrl = spotifyShareUrlMaker + match[0].split(':')[2];
         return spotifyIdToUrl;
