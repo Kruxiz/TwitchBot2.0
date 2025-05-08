@@ -15,12 +15,24 @@ module.exports = class SpotifyController {
         this.accessToken = null;
         this.redirectUri = `http://127.0.0.1:${port}/callback`;
     }
-    // Express Initialization Method
+    
+/**
+ * Initializes the Spotify OAuth flow and sets up routes for token exchange and current track display.
+ *
+ * This method configures an Express application to handle Spotify OAuth authentication.
+ * It defines the following routes:
+ * 1. `/login`: Redirects the user to Spotify's authorization page with the necessary scopes.
+ * 2. `/callback`: Handles the OAuth callback, exchanges the authorization code for tokens,
+ *    and stores the access and refresh tokens.
+ * 3. `/now-playing`: Serves an HTML page displaying the currently playing track.
+ * 4. `/now-playing-track`: Returns the current track information as plain text.
+ *
+ * Starts the Express server on the specified port and opens the login page in the default browser.
+ *
+ * @param {number} port - The port on which the Express server will listen.
+ */
     init(port) {
         let app = express();
-
-        //log the redirect uri
-        console.log(`Redirect URI: ${this.redirectUri}`);
         // Login Route
         app.get('/login', (req, res) => {
             const scope = 'user-modify-playback-state user-read-playback-state user-read-currently-playing';
@@ -176,7 +188,7 @@ module.exports = class SpotifyController {
 
         // Start Express Server
         app.listen(port, () => {
-            console.log(`App is running. Visit ${this.redirectUri} to refresh Spotify API tokens if the page didn't open automatically..`);
+            console.log(`App is running. Visit http://localhost:${port}/login to refresh Spotify API tokens if the page didn't open automatically..`);
         });
 
         open(`http://127.0.0.1:${port}/login`);

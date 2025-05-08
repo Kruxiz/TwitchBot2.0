@@ -103,7 +103,8 @@ module.exports = class TwitchController {
  * 
  * The function returns a Promise that resolves with the access token upon successful authentication,
  * or rejects with an error if the OAuth process fails.
- */startOAuthServer() {
+ */
+startOAuthServer() {
         return new Promise((resolve, reject) => {
             const app = express();
 
@@ -136,26 +137,16 @@ module.exports = class TwitchController {
 
                     // Send response to user
                     res.send("Twitch OAuth complete. You may now close this tab.");
-                    // Force close the server without waiting for other connections
-                    console.log("Forcefully closing server..."); // Debug log to ensure server.close() is called
+                    resolve(this.token);
+                } catch (err) {
+                    console.error("OAuth error:", err.response?.data || err.message);
+                    res.status(500).send("OAuth failed");                  
+                } finally {
+                    // Ensure the server is closed after all operations, even in case of error
+                    console.log("Closing OAuth server...");
                     server.close(() => {
                         console.log("OAuth server closed.");
                         resolve(this.token);
-                    });
-
-                } catch (err) {
-                    console.error("OAuth error:", err.response?.data || err.message);
-                    res.status(500).send("OAuth failed");
-
-                    // Force close the server in case of an error
-                    console.log("Force closing server with error..."); // Debug log to ensure server.close() is called
-                    server.close(() => {
-                        console.log("OAuth server closed with error.");
-                        reject(err);
-
-                        // Shut down the bot process if OAuth fails
-                        console.log("Shutting down the bot due to error...");
-                        process.exit(1); // Exit immediately with error code
                     });
                 }
             });
