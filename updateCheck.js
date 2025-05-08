@@ -3,7 +3,7 @@ const axios = require('axios');
 const pack = require('./package.json');
 
 function checkForUpdates() {
-    axios.get("https://api.github.com/repos/KumoKairo/Spotify-Twitch-Song-Requests/releases/latest")
+    axios.get("https://api.github.com/repos/Kruxiz/TwitchBot2.0/releases/latest")
         .then(r => {
             if (r.data.tag_name > pack.version) {
                 console.log(`An update is available at ${r.data.html_url}`);
