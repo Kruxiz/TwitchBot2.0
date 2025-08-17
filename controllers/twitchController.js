@@ -18,7 +18,7 @@ module.exports = class TwitchController {
         this.CLIENT_ID = process.env.TWITCH_CLIENT_ID;
         this.CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
         this.REDIRECT_URI = 'http://localhost:3000/callback';
-        this.TOKEN_FILE = path.join(__dirname, 'twitch_token.json');
+        this.TOKEN_FILE = path.join(__dirname, '../tokens/twitch_token.json');
     }
 
     async init(chatbotConfig) {
@@ -129,6 +129,13 @@ startOAuthServer() {
                             redirect_uri: this.REDIRECT_URI
                         }
                     });
+
+                    // Ensure the folder exists
+                    const folder = path.dirname(this.TOKEN_FILE);
+                    if (!fs.existsSync(folder)) {
+                        fs.mkdirSync(folder, { recursive: true });
+                        console.log(`Created folder for tokens: ${folder}`);
+                    }
 
                     // Save the token to file
                     fs.writeFileSync(this.TOKEN_FILE, JSON.stringify(tokenRes.data, null, 2));

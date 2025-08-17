@@ -1,6 +1,10 @@
-function log(message, currentConfig) {
-    if (currentConfig.logs) {
-        console.log(message);
+function log(message, currentConfig, level = 'log') {
+    if (currentConfig?.logs) {
+        if (console[level]) {
+            console[level](message);
+        } else {
+            console.log(message);
+        }
     }
 }
 

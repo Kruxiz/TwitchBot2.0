@@ -82,7 +82,7 @@ function parseActualSongUriFromBigMessage(message, currentConfig) {
  * @param {string} url - The Spotify URL
  * @returns {string|false} The track ID if it is not blocked, or false if it is
  */
-function getTrackId(url) {
+function getTrackId(url, currentConfig) {
     let trackId = url.split('/').pop().split('?')[0];
     if (currentConfig.blocked_tracks.includes(trackId)) {
         return false;

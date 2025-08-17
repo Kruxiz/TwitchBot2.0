@@ -1,17 +1,18 @@
-//Handles Spotify Device Player Commands
+// Handles Spotify Device Player Commands
 const { isUserEligible } = require('../utils.js');
+const {formatQueue, formatTrack, formatHistory} = require('../utils/formatters.js');
 const currentConfig = require('../config.js').currentConfig;
 const volMin = 0;
 const volMax = 100;
 const clamp = (num, volMin, volMax) => Math.min(Math.max(num, volMin), volMax);
 const axios = require('axios');
-const {log} = require('../logger.js');
+const { log } = require('../logger.js');
 const displayNameTag = 'display-name';
 const usersHaveSkipped = new Set();
 
 /**
  * Handles printing the current queue of songs.
- *
+ * 
  * This function checks if the user is eligible to use the command
  * and then attempts to print the queue to the specified channel.
  * If the request fails, it logs the error.
@@ -23,71 +24,17 @@ const usersHaveSkipped = new Set();
  */
 handleQueue = async (client, channel, spotifyAPI, currentConfig) => {
     try {
-        await printQueue(client, channel, spotifyAPI, currentConfig);
+        let tracks = await spotifyAPI.getQueue();
+        client.say(channel, formatQueue(tracks, currentConfig.queue_display_depth));
     } catch (error) {
-        // Token expired
-        if (error?.response?.data?.error?.status === 401) {
-            await spotifyAPI.refreshAccessToken();
-            await printQueue(client, channel, spotifyAPI);
-        } else {
-            client.say(channel, `Seems like no music is playing right now`);
-        }
-    }
-}
-
-/**
- * Retrieves and prints the current queue of songs from Spotify.
- *
- * This function fetches the queue of songs from the Spotify API and prints
- * the next few songs in the queue to the specified Twitch channel. The number
- * of songs displayed is determined by the `queue_display_depth` setting in
- * the current configuration. If no songs are in the queue, a message is sent
- * to the channel indicating the queue is empty.
- *
- * @param {object} client - The Twitch client instance used to send messages.
- * @param {string} channel - The Twitch channel where the queue will be printed.
- * @param {object} spotifyAPI - The Spotify API instance used to retrieve the queue.
- */
-printQueue = async (client, channel, spotifyAPI, currentConfig) => {
-    let spotifyHeaders = spotifyAPI.getSpotifyHeaders();
-
-    let res = await axios.get('https://api.spotify.com/v1/me/player/queue', {
-        headers: spotifyHeaders
-    });
-
-    if (!res.data?.currently_playing || !res.data?.queue) {
-        client.say(channel, 'Nothing in the queue.')
-    }
-    else {
-        let songIndex = 1;
-        let concatQueue = '';
-        let queueDepthIndex = currentConfig.queue_display_depth;
-
-        res.data.queue?.every(qItem => {
-            let trackName = qItem.name;
-            let artists = qItem.artists[0].name;
-            concatQueue += `• ${songIndex}) ${artists} - ${trackName} `;
-
-            queueDepthIndex--;
-            songIndex++;
-
-            // using 'every' to loop instead of 'foreach' allows us to break out of a loop like this
-            // so we can keep it
-            if (queueDepthIndex <= 0) {
-                return false;
-            }
-            else {
-                return true;
-            }
-        })
-
-        client.say(channel, `▶️ Next ${currentConfig.queue_display_depth} songs: ${concatQueue}`);
+        log(error, currentConfig, 'error');
+        client.say(channel, `There was an error retrieving the queue.`);
     }
 }
 
 /**
  * Handles printing the current track name to the Twitch channel.
- *
+ *  
  * This function attempts to retrieve and print the current track name
  * from Spotify to the specified channel. If the Spotify access token
  * is expired, it refreshes the token and retries the operation.
@@ -98,40 +45,12 @@ printQueue = async (client, channel, spotifyAPI, currentConfig) => {
  */
 handleTrackName = async (client, channel, spotifyAPI) => {
     try {
-        await printTrackName(client, channel, spotifyAPI);
+        const track = await spotifyAPI.getCurrentTrack();
+        client.say(channel, formatTrack(track));
     } catch (error) {
-        // Token expired
-        if (error?.response?.data?.error?.status === 401) {
-            await spotifyAPI.refreshAccessToken();
-            await printTrackName(client, channel);
-        } else {
-            console.log(error);
-            client.say(channel, 'Seems like no music is playing right now');
-        }
+        log(error, currentConfig, 'error');
+        client.say(channel, 'There was an error retrieving the current track.');
     }
-}
-
-/**
- * Retrieves and prints the current track name from Spotify to the specified Twitch channel.
- *
- * This function fetches the currently playing track from the Spotify API and prints
- * the track name and a link to the track to the specified Twitch channel. If no track
- * is currently playing, a message is sent to the channel indicating that no music
- * is playing.
- *
- * @param {object} client - The Twitch client instance used to send messages.
- * @param {string} channel - The Twitch channel where the track name will be printed.
- * @param {object} spotifyAPI - The Spotify API instance used to retrieve track information.
- */
-printTrackName = async (client, channel, spotifyAPI) => {
-    let spotifyHeaders = spotifyAPI.getSpotifyHeaders();
-    res = await axios.get('https://api.spotify.com/v1/me/player/currently-playing', {headers: spotifyHeaders });
-    let trackId = res.data.item.id;
-    let trackInfo = await spotifyAPI.getTrackInfo(trackId);
-    let trackName = trackInfo.name;
-    let trackLink = res.data.item.external_urls.spotify;
-    let artists = trackInfo.artists.map(artist => artist.name).join(', ');
-    client.say(channel, `▶️ ${artists} - ${trackName} -> ${trackLink}`);
 }
 
 /**
@@ -148,19 +67,15 @@ printTrackName = async (client, channel, spotifyAPI) => {
 async function handleGetVolume(client, channel, tags, currentConfig, spotifyAPI) {
     try {
         let eligible = isUserEligible(channel, tags, currentConfig.volume_set_level);
+        if (!eligible) return;
 
-        if (eligible) {
-            let spotifyHeaders = spotifyAPI.getSpotifyHeaders();
-            res = await axios.get('https://api.spotify.com/v1/me/player', { headers: spotifyHeaders });
-            let currVolume = res.data.device.volume_percent;
-            log(`${tags[displayNameTag]}, the current volume is ${currVolume.toString()}!`, currentConfig);
-            client.say(channel, `${tags[displayNameTag]}, the current volume is ${currVolume.toString()}!`);
-        }
+        let res = await spotifyAPI.request(async () => axios.get('https://api.spotify.com/v1/me/player', { headers: spotifyAPI.getSpotifyHeaders() }));
+        let currVolume = res.data.device.volume_percent;
+
+        log(`${tags[displayNameTag]}, the current volume is ${currVolume}!`, currentConfig);
+        client.say(channel, `${tags[displayNameTag]}, the current volume is ${currVolume}!`);
     } catch (error) {
-        console.log(error);
-        // Skipping the error for now, let the users spam it
-        // 403 error of not having premium is the same as with the request,
-        // ^ TODO get one place to handle common Spotify error codes
+        log(error, currentConfig);
     }
 }
 
@@ -178,35 +93,23 @@ async function handleGetVolume(client, channel, tags, currentConfig, spotifyAPI)
  * @param {string} arg - The desired volume level as a percentage (0-100).
  */
 async function handleSetVolume(client, channel, tags, arg, currentConfig, spotifyAPI) {
-
     try {
-        let eligible = isUserEligible(channel, tags, currentConfig.volume_set_level);
+        const eligible = isUserEligible(channel, tags, currentConfig.volume_set_level);
+        if (!eligible) return;
 
-        if (eligible) {
-
-            let number = 0;
-            try {
-                number = Number(arg);
-                number = clamp(number, volMin, volMax);
-            } catch (error) {
-                console.log(error);
-                client.say(channel, `${tags[displayNameTag]}, a number between 0 and 100 is required.`);
-                return;
-            }
-
-            let spotifyHeaders = spotifyAPI.getSpotifyHeaders();
-            //courtesy of greav
-            res = await axios.put('https://api.spotify.com/v1/me/player/volume', null, { headers: spotifyHeaders, params: { volume_percent: number } });
-
-            log(`${tags[displayNameTag]} has set the current volume to ${number.toString()}!`, currentConfig);
-            client.say(channel, `${tags[displayNameTag]} has set the current volume to ${number.toString()}!`);
+        let number = Number(arg);
+        if (isNaN(number)) {
+            client.say(channel, `${tags[displayNameTag]}, a number between 0 and 100 is required.`);
+            return;
         }
+        number = clamp(number, volMin, volMax);
+
+        await spotifyAPI.request(async () => axios.put('https://api.spotify.com/v1/me/player/volume', null, { headers: spotifyAPI.getSpotifyHeaders(), params: { volume_percent: number } }));
+
+        log(`${tags[displayNameTag]} has set the current volume to ${number}!`, currentConfig);
+        client.say(channel, `${tags[displayNameTag]} has set the current volume to ${number}!`);
     } catch (error) {
-        console.log(error);
-        client.say(channel, `There was a problem setting the volume`);
-        // Skipping the error for now, let the users spam it
-        // 403 error of not having premium is the same as with the request,
-        // ^ TODO get one place to handle common Spotify error codes
+        log(error, currentConfig);
     }
 }
 
@@ -224,20 +127,27 @@ async function handleSetVolume(client, channel, tags, arg, currentConfig, spotif
  * @param {object} currentConfig - The current configuration object.
  */
 handleVoteSkip = async (client, channel, username, spotifyAPI, currentConfig) => {
+    try {
+        if (!usersHaveSkipped.has(username)) {
+            startOrProgressVoteskip(client, channel, currentConfig);
+            usersHaveSkipped.add(username);
 
-    if (!usersHaveSkipped.has(username)) {
-        startOrProgressVoteskip(client, channel, currentConfig);
-        usersHaveSkipped.add(username);
-        log(`${username} voted to skip the current song (${usersHaveSkipped.size}/${currentConfig.required_vote_skip})!`, currentConfig);
-        client.say(channel, `${username} voted to skip the current song (${usersHaveSkipped.size}/${currentConfig.required_vote_skip})!`);
-    }
-    if (usersHaveSkipped.size >= currentConfig.required_vote_skip) {
-        usersHaveSkipped.clear();
-        clearTimeout(voteskipTimeout);
-        log(`Chat has skipped ${await spotifyAPI.getCurrentTrack()} (${currentConfig.required_vote_skip}/${currentConfig.required_vote_skip})!`, currentConfig);
-        client.say(channel, `Chat has skipped ${await spotifyAPI.getCurrentTrack()} (${currentConfig.required_vote_skip}/${currentConfig.required_vote_skip})!`);
-        let spotifyHeaders = spotifyAPI.getSpotifyHeaders();
-        res = await axios.post('https://api.spotify.com/v1/me/player/next', {}, { headers: spotifyHeaders }); 
+            log(`${username} voted to skip the current song (${usersHaveSkipped.size}/${currentConfig.required_vote_skip})!`, currentConfig);
+            client.say(channel, `${username} voted to skip the current song (${usersHaveSkipped.size}/${currentConfig.required_vote_skip})!`);
+        }
+
+        if (usersHaveSkipped.size >= currentConfig.required_vote_skip) {
+            usersHaveSkipped.clear();
+            clearTimeout(voteskipTimeout);
+
+            const currentTrack = await spotifyAPI.getCurrentTrack();
+            log(`Chat has skipped ${currentTrack} (${currentConfig.required_vote_skip}/${currentConfig.required_vote_skip})!`, currentConfig);
+            client.say(channel, `Chat has skipped ${currentTrack} (${currentConfig.required_vote_skip}/${currentConfig.required_vote_skip})!`);
+
+            await spotifyAPI.request(async () => axios.post('https://api.spotify.com/v1/me/player/next', null, { headers: spotifyAPI.getSpotifyHeaders() }));
+        }
+    } catch (error) {
+        console.log(error);
     }
 }
 
@@ -253,7 +163,7 @@ function startOrProgressVoteskip(client, channel, currentConfig) {
         clearTimeout(voteskipTimeout);
     }
 
-    voteskipTimeout = setTimeout(function () { resetVoteskip(client, channel) }, currentConfig.voteskip_timeout * 1000);
+    voteskipTimeout = setTimeout(() => resetVoteskip(client, channel), currentConfig.voteskip_timeout * 1000);
 }
 
 /**
@@ -281,26 +191,51 @@ function resetVoteskip(client, channel) {
  */
 handleSkipSong = async (client, channel, tags, spotifyAPI, currentConfig) => {
     try {
-        let eligible = isUserEligible(channel, tags, currentConfig.skip_user_level);
+        const eligible = isUserEligible(channel, tags, currentConfig.skip_user_level);
+        if (!eligible) return;
 
-        if (eligible) {
-            client.say(channel, `${tags[displayNameTag]} skipped ${await spotifyAPI.getCurrentTrack()}!`);
-            log(`${tags[displayNameTag]} skipped ${await spotifyAPI.getCurrentTrack()}!`, currentConfig);
-            let spotifyHeaders = spotifyAPI.getSpotifyHeaders();
-            res = await axios.post('https://api.spotify.com/v1/me/player/next', null, { headers: spotifyHeaders });
-        }
+        const currentTrack = await spotifyAPI.getCurrentTrack();
+        client.say(channel, `${tags[displayNameTag]} skipped ${currentTrack}!`);
+        log(`${tags[displayNameTag]} skipped ${currentTrack}!`, currentConfig);
+
+        await spotifyAPI.request(async () => axios.post('https://api.spotify.com/v1/me/player/next', null, { headers: spotifyAPI.getSpotifyHeaders() }));
     } catch (error) {
-        console.log(error);
-        // Skipping the error for now, let the users spam it
-        // 403 error of not having premium is the same as with the request,
-        // ^ TODO get one place to handle common Spotify error codes
+        log(error, currentConfig);
     }
 }
+
+
+/**
+ * Handles a request for the user's recently played tracks.
+ *
+ * This function checks if the user is eligible for this command and then
+ * calls the getRecentlyPlayed function of the SpotifyAPI instance to retrieve
+ * the user's recently played tracks. If the request fails, it logs the error.
+ *
+ * @param {object} client - The Twitch client instance used to send messages.
+ * @param {string} channel - The Twitch channel where the tracks will be printed.
+ * @param {object} tags - The tags object containing user information.
+ * @param {object} spotifyAPI - The Spotify API instance used to retrieve the recently played tracks.
+ * @param {object} currentConfig - The current configuration object.
+ */
+handleGetRecentlyPlayed = async (client, channel, tags, spotifyAPI, currentConfig) => {
+    try {
+        log(`Requesting recently played tracks for ${tags[displayNameTag]}...`, currentConfig);
+        const eligible = isUserEligible(channel, tags, currentConfig.history_user_level);
+        if (!eligible) return;
+        const history = await spotifyAPI.getRecentlyPlayed(client, channel, currentConfig);
+        client.say(channel, formatHistory(history, currentConfig.history_display_depth));
+    } catch (error) {
+        log(error, currentConfig);
+    }
+}
+
 module.exports = {
     handleQueue,
     handleTrackName,
     handleGetVolume,
     handleSetVolume,
     handleVoteSkip,
-    handleSkipSong
+    handleSkipSong,
+    handleGetRecentlyPlayed
 };
