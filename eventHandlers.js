@@ -1,7 +1,7 @@
 // eventHandlers.js
 // Require the Commannd Handlers
 const { handleSongRequest, validateSongRequest, addValidatedSongToQueue, addSongToQueue } = require('./commands/songRequests.js');
-const { handleQueue, handleGetVolume, handleSetVolume, handleTrackName, handleVoteSkip} = require('./commands/player.js');
+const { handleQueue, handleGetVolume, handleSetVolume, handleTrackName, handleVoteSkip, handleSkipSong, handleGetRecentlyPlayed} = require('./commands/player.js');
 // ... import other handlers
 const { isUserEligible } = require('./utils.js');
 const { log } = require('./logger.js');
@@ -81,7 +81,17 @@ function registerEventHandlers(client, twitchAPI, spotifyAPI, currentConfig) {
                         client.say(channel, 'There was a problem creating the clip');
                     }
                 }
+            },
+            '!history': async () => {
+                try {
+                    log(`History command invoked by ${tags[displayNameTag]}`, currentConfig);
+                    await handleGetRecentlyPlayed(client, channel, tags, spotifyAPI, currentConfig);
+                } catch (error) {
+                    console.error('Error handling history command:', error);
+                    client.say(channel, 'There was a problem retrieving the recently played songs.');
+                }
             }
+
         };
     
         const handler = commandHandlers[command];

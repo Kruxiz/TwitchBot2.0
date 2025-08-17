@@ -1,6 +1,6 @@
 {
   "name": "krux-twitch-bot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -20,6 +20,21 @@
     "yaml": "^1.10.2"
   },
   "devDependencies": {
-    "jest": "^29.0.1"
+    "axios-mock-adapter": "^2.1.0",
+    "jest": "^29.7.0"
+  },
+  "bin": "index.js",
+  "pkg": {
+    "assets": [
+      "referenceConfig/spotipack_config.yaml",
+      "controllers/*.js",
+      "commands/*.js"
+    ],
+    "scripts": [
+      "eventHandlers.js",
+      "utils.js",
+      "logger.js",
+      "updatecheck.js"
+    ]
   }
 }

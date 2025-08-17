@@ -1,0 +1,86 @@
+<html>
+
+<head>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Montserrat', sans-serif;
+            background: transparent;
+            color: white;
+            max-width: 800px;
+            max-height: 92px;
+            overflow: auto;
+        }
+
+        .bar {
+            height: 8px;
+            background: white;
+            width: 100%;
+        }
+
+        .track-container {
+            display: flex;
+            align-items: center;
+            background: rgba(36, 6, 73, 0.15);
+            padding: 14px 22px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .spotify-logo {
+            width: 28px;
+            height: 28px;
+            margin-right: 12px;
+        }
+
+        .track-wrapper {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .track {
+            font-size: clamp(36px, 3vw, 36px);
+            font-weight: 600;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            animation: scrollText 20s linear infinite;
+        }
+
+        @keyframes scrollText {
+            0% {
+                transform: translateX(100%);
+            }
+
+            100% {
+                transform: translateX(-100%);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bar"></div>
+    <div class="track-container">
+        <img class="spotify-logo"
+            src="https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_White.png"
+            alt="Spotify">
+        <div class="track-wrapper">
+            <div class="track" id="track-text">Loading...</div>
+        </div>
+    </div>
+    <div class="bar"></div>
+    <script>
+        async function fetchTrack() {
+            try {
+                const res = await fetch('/now-playing-track');
+                const data = await res.text();
+                document.getElementById('track-text').textContent = data || 'Nothing playing right now';
+            } catch (e) { console.error('Error fetching track:', e); }
+        }
+        fetchTrack();
+        setInterval(fetchTrack, 5000);
+    </script>
+</body>
+
+</html>
