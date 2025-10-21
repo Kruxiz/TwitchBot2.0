@@ -1,10 +1,10 @@
 // eventHandlers.js
 // Require the Commannd Handlers
 const { handleSongRequest, validateSongRequest, addValidatedSongToQueue, addSongToQueue } = require('./commands/songRequests.js');
-const { handleQueue, handleGetVolume, handleSetVolume, handleTrackName, handleVoteSkip, handleSkipSong, handleGetRecentlyPlayed} = require('./commands/player.js');
+const { handleQueue, handleGetVolume, handleSetVolume, handleTrackName, handleVoteSkip, handleSkipSong, handleGetRecentlyPlayed } = require('./commands/player.js');
 // ... import other handlers
-const { isUserEligible } = require('./utils.js');
-const { log } = require('./logger.js');
+const { isUserEligible } = require('./utils/utils.js');
+const { log } = require('./utils/logger.js');
 
 
 const channelPointsUsageType = 'channel_points';
@@ -23,92 +23,130 @@ const displayNameTag = 'display-name';
 function registerEventHandlers(client, twitchAPI, spotifyAPI, currentConfig) {
     client.on('message', async (channel, tags, message, self) => {
         if (self) return;
-    
+
         const messageToLower = message.toLowerCase();
         const command = messageToLower.split(" ")[0];
         const args = messageToLower.split(" ").slice(1);
-    
-        if (currentConfig.usage_types.includes(commandUsageType)
-            && currentConfig.command_alias.includes(command)
-            && isUserEligible(channel, tags, currentConfig.command_user_level)) {
-            
-            if (!args.length) {
-                client.say(currentConfig.channel_name, `${tags[displayNameTag]}, usage: !songrequest song-link (Spotify -> Share -> Copy Song Link)`);
-            } else {
-                await handleSongRequest(client, channel, tags[displayNameTag], message, tags, twitchAPI, spotifyAPI, currentConfig);
+
+        // function to register single or multiple aliases
+        function registerCommand(aliases, handler, handlers) {
+            if (!aliases) return;
+            if (!Array.isArray(aliases)) aliases = [aliases]; // ensure aliases is an array
+            for (const alias of aliases) {
+                handlers[alias] = handler;
             }
-    
-            return; // stop here if handled
         }
-    
-        const commandHandlers = {
-            '!volume': async () => {
-                if (!args.length) {
-                    await handleGetVolume(client, channel, tags, currentConfig, spotifyAPI);
-                } else {
-                    await handleSetVolume(client, channel, tags, args[0], currentConfig, spotifyAPI);
-                }
-            },
-            [currentConfig.skip_alias]: async () => {
-                await handleSkipSong(client, channel, tags, spotifyAPI, currentConfig);
-            },
-            '!song': async () => {
-                if (currentConfig.use_song_command) {
-                    await handleTrackName(client, channel, spotifyAPI);
-                }
-            },
-            '!queue': async () => {
-                if (currentConfig.use_queue_command) {
-                    await handleQueue(client, channel, spotifyAPI, currentConfig);
-                }
-            },
-            '!voteskip': async () => {
-                if (currentConfig.allow_vote_skip) {
-                    await handleVoteSkip(client, channel, tags[displayNameTag], spotifyAPI, currentConfig);
-                }
-            },
-            '!clip': async () => {
-                if (isUserEligible(channel, tags, currentConfig.clip_user_level)) {
-                    try {
-                        const clipUrl = await twitchAPI.createClip();
-                        if (clipUrl) {
-                            client.say(channel, clipUrl);
-                        } else {
-                            client.say(channel, 'There was a problem creating the clip');
-                        }
-                    } catch (error) {
-                        console.error(error);
-                        client.say(channel, 'There was a problem creating the clip');
-                    }
-                }
-            },
-            '!history': async () => {
+
+        const commandHandlers = {};
+
+        // 🎵 Song request (can be multiple aliases)
+        registerCommand(currentConfig.command_alias, async () => {
+            if (!args.length) {
+                client.say(
+                    channel,
+                    `${tags['display-name']}, usage: !songrequest song-link (Spotify -> Share -> Copy Song Link)`
+                );
+            } else if (isUserEligible(channel, tags, currentConfig.command_user_level) &&
+                currentConfig.usage_types.includes(commandUsageType)) {
+                await handleSongRequest(
+                    client,
+                    channel,
+                    tags['display-name'],
+                    message,
+                    tags,
+                    spotifyAPI,
+                    currentConfig
+                );
+            }
+        }, commandHandlers);
+
+        registerCommand("!volume", async () => {
+            if (!args.length) {
+                await handleGetVolume(client, channel, tags, currentConfig, spotifyAPI);
+            } else {
+                await handleSetVolume(client, channel, tags, args[0], currentConfig, spotifyAPI);
+            }
+        }, commandHandlers);
+
+        registerCommand(currentConfig.skip_alias, async () => {
+            await handleSkipSong(client, channel, tags, spotifyAPI, currentConfig);
+        }, commandHandlers);
+
+        registerCommand("!song", async () => {
+            if (currentConfig.use_song_command) {
+                await handleTrackName(client, channel, tags, spotifyAPI, currentConfig);
+            }
+        }, commandHandlers);
+
+
+        registerCommand("!queue", async () => {
+            if (currentConfig.use_queue_command) {
+                await handleQueue(client, channel, tags, spotifyAPI, currentConfig);
+            }
+        }, commandHandlers);
+
+        registerCommand("!voteskip", async () => {
+            if (currentConfig.allow_vote_skip) {
+                await handleVoteSkip(
+                    client,
+                    channel,
+                    tags['display-name'],
+                    spotifyAPI,
+                    currentConfig
+                );
+            }
+        }, commandHandlers);
+
+        registerCommand("!clip", async () => {
+            if (isUserEligible(channel, tags, currentConfig.clip_user_level)) {
                 try {
-                    log(`History command invoked by ${tags[displayNameTag]}`, currentConfig);
+                    const clipUrl = await twitchAPI.createClip();
+                    client.say(channel, clipUrl || "There was a problem creating the clip");
+                } catch (error) {
+                    console.error(error);
+                    client.say(channel, "There was a problem creating the clip");
+                }
+            }
+        }, commandHandlers);
+
+
+        registerCommand("!history", async () => {
+            if (currentConfig.use_history_command) {
+                try {
+                    log(`History command invoked by ${tags['display-name']}`, currentConfig);
                     await handleGetRecentlyPlayed(client, channel, tags, spotifyAPI, currentConfig);
                 } catch (error) {
-                    console.error('Error handling history command:', error);
-                    client.say(channel, 'There was a problem retrieving the recently played songs.');
+                    console.error("Error handling history command:", error);
+                    client.say(channel, "There was a problem retrieving the recently played songs.");
                 }
             }
+        }, commandHandlers);
 
-        };
-    
+        // Dispatcher
         const handler = commandHandlers[command];
         if (handler) {
             await handler();
         }
     });
-    
 
-    client.on('cheer', async (channel, state, message) => {
+    /*client.on('cheer', async (channel, state, message) => {
         // existing cheer logic
-    });
+    });*/
 
     client.on('redeem', async (channel, username, rewardType, tags, message) => {
         log(`Reward ID: ${rewardType}`, currentConfig);
-        if (currentConfig.usage_types.includes(channelPointsUsageType) && rewardType === currentConfig.custom_reward_id) {
-            let result = await handleSongRequest(client, channel, tags[displayNameTag], message, tags, twitchAPI, spotifyAPI, currentConfig);
+        if (currentConfig.usage_types.includes(channelPointsUsageType) &&
+            rewardType === currentConfig.custom_reward_id) {
+            let result = await handleSongRequest(
+                client,
+                channel,
+                tags['display-name'],
+                message,
+                tags,
+                spotifyAPI,
+                currentConfig
+            );
+
             if (!result) {
                 if (await twitchAPI.refundPoints()) {
                     log(`${username} redeemed a song request that couldn't be completed. It was refunded automatically.`, currentConfig);

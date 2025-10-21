@@ -2,7 +2,7 @@
 
 const { log } = require('./logger.js');
 
-const currentConfig = require('./config.js').currentConfig;
+const currentConfig = require('../config.js').currentConfig;
 
 //spotify regex constants
 const spotifyShareUrlBase = 'https://open.spotify.com';
@@ -45,7 +45,7 @@ function isUserEligible(channel, tags, rolesArray) {
  * @param {string} message - The message containing the potential Spotify track URL.
  * @returns {string|null} - The extracted Spotify track URL if found, otherwise null.
  */
-function parseActualSongUrlFromBigMessage(message, currentConfig) {
+function parseActualSongUrlFromBigMessage(message) {
     const regex = new RegExp(spotifyShareUrlMakerRegex);
     let match = message.match(regex);
     if (match !== null) {
@@ -65,7 +65,7 @@ function parseActualSongUrlFromBigMessage(message, currentConfig) {
  * @param {string} message - The message containing the potential Spotify URI.
  * @returns {string|null} - The constructed Spotify song URL if a URI is found, otherwise null.
  */
-function parseActualSongUriFromBigMessage(message, currentConfig) {
+function parseActualSongUriFromBigMessage(message) {
     const regex = new RegExp(`${spotifyShareUriMaker}[^\\s]+`);
     let match = message.match(regex);
     if (match !== null) {

@@ -1,17 +1,18 @@
 const axios = require('axios');
 const express = require('express');
 const open = require('open');
-const { log } = require('../logger.js');
+const { log } = require('../utils/logger.js');
 const fs = require('fs');
 const path = require('path');
 
 module.exports = class SpotifyController {
     constructor(clientId, clientSecret, port) {
+        this.port = port;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.refreshToken = null;
         this.accessToken = null;
-        this.redirectUri = `http://127.0.0.1:${port}/callback`;
+        this.redirectUri = `http://127.0.0.1:${this.port}/callback`;
         this.tokenFile = path.join(__dirname, '../tokens/spotify_tokens.json');
         this.loadTokensFromDisk();
     }
@@ -94,23 +95,17 @@ module.exports = class SpotifyController {
         }
     }
     /**
-     * Initializes the Spotify OAuth flow and sets up routes for token exchange and current track display.
-     *
-     * This method configures an Express application to handle Spotify OAuth authentication.
-     * It defines the following routes:
-     * 1. `/login`: Redirects the user to Spotify's authorization page with the necessary scopes.
-     * 2. `/callback`: Handles the OAuth callback, exchanges the authorization code for tokens,
-     *    and stores the access and refresh tokens.
-     * 3. `/now-playing`: Serves an HTML page displaying the currently playing track.
-     * 4. `/now-playing-track`: Returns the current track information as plain text.
-     *
-     * Starts the Express server on the specified port and opens the login page in the default browser.
-     *
-     * @param {number} port - The port on which the Express server will listen.
-         * Initializes the Spotify OAuth flow and sets up routes
+     * Initializes the Spotify routes for the provided Express app.
+     * 
+     * This function sets up the routes for the Spotify login, callback, now-playing, and
+     * now-playing-track endpoints. The login route redirects the user to the Spotify
+     * authorization page, and the callback route exchanges the authorization code for
+     * access and refresh tokens. The now-playing routes return the currently playing
+     * track's name and artists.
+     * 
+     * @param {Express.Application} app - The Express app to register the routes with.
      */
-    init(port) {
-        let app = express();
+    init(app) {
         // Login Route
         app.get('/login', (req, res) => {
             const scope = 'user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-recently-played';
@@ -121,67 +116,62 @@ module.exports = class SpotifyController {
             authParams.append('scope', scope);
             res.redirect(`https://accounts.spotify.com/authorize?${authParams}`);
         });
-
+    
         // Callback Route
         app.get('/callback', async (req, res) => {
-            let code = req.query.code || null;
-
+            const code = req.query.code || null;
             if (!code) {
                 return res.status(400).send('Error: Missing authorization code.');
             }
-
+    
             const params = new URLSearchParams();
             params.append('code', code);
             params.append('redirect_uri', this.redirectUri);
             params.append('grant_type', 'authorization_code');
-
+    
             const config = {
                 headers: {
                     'Authorization': 'Basic ' + Buffer.from(this.clientId + ':' + this.clientSecret).toString('base64'),
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             };
-
+    
             try {
                 const tokenResponse = await this.request(() =>
                     axios.post('https://accounts.spotify.com/api/token', params, config),
-                    0 // No retry on initial token exchange
+                    0
                 );
-
+    
                 if (tokenResponse.data.refresh_token) {
                     this.refreshToken = tokenResponse.data.refresh_token;
-
                 }
                 this.accessToken = tokenResponse.data.access_token;
-                this.saveTokensToDisk(); // Save tokens to disk
+                this.saveTokensToDisk();
                 console.log('Tokens saved successfully.');
-                res.send('Tokens refreshed successfully. You can close this tab');
+                res.send('Tokens refreshed successfully. You can close this tab.');
             } catch (error) {
                 console.error('Error during token exchange:', error.message);
                 res.status(500).send('Internal Server Error');
             }
         });
-
-        const overlayHTML = fs.readFileSync(path.join(process.cwd(), 'now-playing.html'), 'utf8');
-
+    
+        // Now Playing overlay routes
+        const overlayHTML = fs.readFileSync(path.join(process.cwd(), 'templates/now-playing.html'), 'utf8');
+    
         app.get('/now-playing', (req, res) => {
             res.send(overlayHTML);
         });
-
+    
         app.get('/now-playing-track', async (req, res) => {
             let track = await this.getCurrentTrack();
-            track = track.data.item;
-            res.send(track.name + " - " + track.artists.map(a => a.name).join(', ') || 'Nothing playing right now');
+            track = track?.data?.item;
+            res.send(track ? track.name + " - " + track.artists.map(a => a.name).join(', ') : 'Nothing playing right now');
         });
-
-        // Start Express Server
-        app.listen(port, () => {
-            console.log(`App running. Visit http://localhost:${port}/login to refresh tokens.`);
-        });
-
-        open(`http://127.0.0.1:${port}/login`);
-        console.log(`Now Playing overlay available at http://127.0.0.1:${port}/now-playing`);
+    
+        if (!this.accessToken) open(`http://127.0.0.1:${this.port}/login`);
+        console.log("Spotify routes registered: /login, /callback, /now-playing, /now-playing-track");
     }
+    
 
     // Refresh Access Token
     async refreshAccessToken() {

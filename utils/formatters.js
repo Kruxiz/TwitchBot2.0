@@ -26,6 +26,17 @@ function formatQueue(tracks, depth) {
     return `▶️ Last ${history.length} songs: ` + 
     history.map(h => `• ${h.index}) ${h.artists.join(', ')} - ${h.name}`).join(' ');
   }
+
+  function formatSkipTrack(track) {
+    if (!track) return 'No track to skip.';
+    track = track.data.item || track; // Handle both direct and wrapped track objects
+    return `▶️ Skipping ${track.artists.map(a => a.name).join(', ')} - ${track.name} -> ${track.external_urls.spotify}`;
+  }
   
-module.exports = { formatQueue, formatTrack, formatHistory };
-  
+  function formatVoteSkipTrack(track) {
+    if (!track) return 'No track to skip.';
+    track = track.data.item || track; // Handle both direct and wrapped track objects
+    return `Chat has skipped ${track.artists.map(a => a.name).join(', ')} - ${track.name} -> ${track.external_urls.spotify}`;
+  }
+
+module.exports = { formatQueue, formatTrack, formatHistory, formatSkipTrack, formatVoteSkipTrack };

@@ -1,5 +1,5 @@
-const { parseActualSongUrlFromBigMessage, parseActualSongUriFromBigMessage, isUserEligible, getTrackId, handleMessageQueries } = require('../utils.js');
-const { log } = require('../logger.js');
+const { parseActualSongUrlFromBigMessage, parseActualSongUriFromBigMessage, isUserEligible, getTrackId, handleMessageQueries } = require('../utils/utils.js');
+const { log } = require('../utils/logger.js');
 
 /**
  * Handles a song request from the Twitch channel.
@@ -18,7 +18,7 @@ const { log } = require('../logger.js');
  * @param {object} config - The configuration object containing settings for song requests.
  * @returns {Promise<boolean>} A promise which resolves to true if the song was added to the queue, false if the user is not eligible.
  */
-let handleSongRequest = async (client, channel, username, message, tags, twitchAPI, spotifyAPI, config) => {
+let handleSongRequest = async (client, channel, username, message, tags, spotifyAPI, config) => {
     let songId = await validateSongRequest(message, channel, config, spotifyAPI);
     if (!songId) {
         client.say(channel, config.song_not_found);
@@ -67,6 +67,18 @@ let validateSongRequest = async (message, channel, config, spotifyAPI) => {
     }
 }
 
+/**
+ * Adds a song to the user's Spotify queue.
+ *
+ * @param {object} client - The Twitch client instance used to send messages.
+ * @param {string} songId - The Spotify ID of the song to be added.
+ * @param {string} channel - The Twitch channel where the command was invoked.
+ * @param {string} username - The username of the user who requested the song.
+ * @param {object} tags - The tags object containing user information.
+ * @param {object} spotifyAPI - The Spotify API instance.
+ * @param {object} config - The configuration object containing settings for song requests.
+ * @returns {Promise<boolean>} A promise which resolves to true if the song was added to the queue, otherwise false.
+ */
 let addSongToQueue = async (client, songId, channel, username, tags, spotifyAPI, config) => {
     try {
         const { name, artists, uri, duration_ms } = await spotifyAPI.getTrackInfo(songId);
