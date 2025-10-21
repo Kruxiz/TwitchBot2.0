@@ -13,7 +13,7 @@ const filesToCopy = [   'index.js',
                         'config.js',
                         'eventHandlers.js',
                         'logger.js',
-                        'utils.js',
+                        './utils/utils.js',
                         'updatecheck.js',
                         'package.json', 
                         'run.bat' ];
@@ -24,6 +24,8 @@ try {
     fs.copySync('node', `${distDir}/node`);
     fs.copySync('node_modules', `${distDir}/node_modules`);
     fs.copySync('referenceConfig/spotipack_config.yaml', `${distDir}/spotipack_config.yaml`);
+    fs.copySync('templates', `${distDir}/templates`);
+    fs.copySync('utils', `${distDir}/utils`);
     filesToCopy.map(copyFile);
     execSync(`${zipCommand} ${version}.zip dist`);
 } catch (err) {
