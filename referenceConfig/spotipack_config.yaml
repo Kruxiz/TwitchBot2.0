@@ -1,0 +1,68 @@
+user_name: REPLACE_THIS                # Name of the user you are connecting as (messages will be sent via this user)
+channel_name: Replace_THIS             # Name of the channel this bot is working on (can be same as the user name, if the streamer wants to post messages as himself)
+express_port: 8888
+logs: true
+usage_types:
+  - command
+  - channel_points
+usage_message: >-
+  $(username), usage: !songrequest song-link (Spotify -> Share -> Copy Song
+  Link)
+wrong_format_message: $(username), sorry, but only Spotify Share URLs are supported
+song_not_found: Sorry, I was unable to find that song on Spotify.
+added_to_queue_messages:
+  - '"$(artists) - $(trackName)" is added to the queue catJAM'
+max_duration: 300
+custom_reward_id: adf08c5e-73da-4e4c-8e5f-4ed1b25d98ef
+custom_reward_name: Song Request
+custom_reward_cost: 500
+automatic_refunds: true
+#Song Request Options
+command_alias:
+  - '!songrequest'
+  - '!sr'
+command_user_level:
+  - everyone
+use_song_command: true
+ignore_max_length:
+  - streamer
+  - mod
+use_cooldown: false
+cooldown_duration: 60
+blocked_tracks:
+  - ''
+#Queue Options
+use_queue_command: true
+disable_duplicates_in_queue: true
+queue_display_depth: 5
+queue_user_level:
+  - everyone
+#History Options
+use_history_command: true
+history_user_level:
+  - everyone
+history_display_depth: 5
+#Skip Options
+use_skip_command: true
+skip_alias:
+  - '!skip'
+skip_user_level:
+  - streamer
+  - mod
+#Bits Options
+minimum_required_bits: 1
+use_exact_amount_of_bits: false
+#Vote Skip Options
+allow_vote_skip: true
+required_vote_skip: 1
+voteskip_timeout: 17
+#Volume Options
+allow_volume_set: true
+volume_set_level:
+  - streamer
+  - mod
+#twitch clip options
+clip_user_level:
+  - streamer
+  - mod
+  - vip

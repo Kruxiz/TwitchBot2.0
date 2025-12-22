@@ -4,12 +4,29 @@ const { log } = require('./logger.js');
 
 const currentConfig = require('../config.js').currentConfig;
 
-//spotify regex constants
-const spotifyShareUrlBase = 'https://open.spotify.com';
-const spotifyShareUrlMaker = `${spotifyShareUrlBase}/track/`;
-const spotifyShareUrlMakerRegex = `${spotifyShareUrlBase}/(?:.*)?track/[^\\s]+`;
-const spotifyShareUriMaker = 'spotify:track:';
+// Strict Spotify regex constants
+const SPOTIFY_BASE_URL = 'https://open.spotify.com';
+const SPOTIFY_TRACK_PATH = `${SPOTIFY_BASE_URL}/track/`;
 
+// Matches only valid Spotify track URLs, not other sites
+// Examples matched:
+// - https://open.spotify.com/track/1abcDEF123
+// - https://open.spotify.com/intl-en/track/1abcDEF123?si=xyz
+// Rejects anything from other domains
+// Spotify track URL — only valid if the entire string is a proper Spotify track link
+const SPOTIFY_TRACK_URL_REGEX = /^(?:https?:\/\/)?open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/([A-Za-z0-9]{10,})(?:\?.*)?$/i;
+
+// Spotify URI — only valid if the entire string is exactly a Spotify track URI
+const SPOTIFY_URI_REGEX = /^spotify:track:([A-Za-z0-9]{10,})$/i;
+
+/**
+ * Checks if a user is eligible for a command based on their roles.
+ *
+ * @param {string} channel - The channel where the command was invoked.
+ * @param {object} tags - The tags object containing user information.
+ * @param {string[]} rolesArray - An array of roles to check against.
+ * @returns {boolean} True if the user is eligible for the command, false otherwise.
+ */
 function isUserEligible(channel, tags, rolesArray) {
     const username = tags.username;
     const channelName = channel.replace('#', '');
@@ -36,44 +53,58 @@ function isUserEligible(channel, tags, rolesArray) {
 }
 
 /**
- * Extracts the Spotify track URL from a given message.
+ * Attempts to parse a Spotify track URL from a message string.
  *
- * This function uses a regular expression to search for a Spotify track URL
- * pattern within the input message string. If a match is found, it returns
- * the matched URL. If no match is found, it returns null.
- *
- * @param {string} message - The message containing the potential Spotify track URL.
- * @returns {string|null} - The extracted Spotify track URL if found, otherwise null.
+ * @param {string} message - The message string to parse.
+ * @returns {string|null} The parsed Spotify track URL if successful, null otherwise.
  */
 function parseActualSongUrlFromBigMessage(message) {
-    const regex = new RegExp(spotifyShareUrlMakerRegex);
-    let match = message.match(regex);
-    if (match !== null) {
-        return match[0];
-    } else {
-        return null;
-    }
+    if (typeof message !== 'string') return null;
+    const match = message.trim().match(SPOTIFY_TRACK_URL_REGEX);
+    if (!match) return null;
+    const trackId = match[1];
+    return `${SPOTIFY_TRACK_PATH}${trackId}`;
 }
 
 /**
- * Parses a Spotify song URI from a given message.
+ * Attempts to parse a Spotify track URI from a message string.
  *
- * Uses a regular expression to search for a Spotify song URI pattern within
- * the input message string. If a match is found, it constructs a Spotify URL
- * using the extracted song ID and returns it. If no match is found, returns null.
- *
- * @param {string} message - The message containing the potential Spotify URI.
- * @returns {string|null} - The constructed Spotify song URL if a URI is found, otherwise null.
+ * @param {string} message - The message string to parse.
+ * @returns {string|null} The parsed Spotify track URI if successful, null otherwise.
  */
 function parseActualSongUriFromBigMessage(message) {
-    const regex = new RegExp(`${spotifyShareUriMaker}[^\\s]+`);
-    let match = message.match(regex);
-    if (match !== null) {
-        spotifyIdToUrl = spotifyShareUrlMaker + match[0].split(':')[2];
-        return spotifyIdToUrl;
-    } else {
-        return null;
+    if (typeof message !== 'string') return null;
+    const match = message.trim().match(SPOTIFY_URI_REGEX);
+    if (!match) return null;
+    const trackId = match[1];
+    return `${SPOTIFY_TRACK_PATH}${trackId}`;
+}
+
+/**
+ * Attempts to parse a song input message into a usable form.
+ *
+ * Checks for Spotify track URLs and URIs in the message, and if found, returns
+ * an object with the type set to 'url' and the value set to the extracted URL.
+ * If no URL or URI is found, assumes the message is a search term and returns
+ * an object with the type set to 'search' and the value set to the cleaned search term.
+ *
+ * @param {string} message - The message to parse.
+ * @returns {Object|null} - An object containing the parsed song input, or null if no input is found.
+ */
+function parseSongInput(message) {
+    const url = parseActualSongUrlFromBigMessage(message);
+    if (url) return { type: 'url', value: url };
+
+    const uri = parseActualSongUriFromBigMessage(message);
+    if (uri) return { type: 'url', value: uri };
+
+    // Fallback: assume it's a search term
+    const cleaned = message.trim();
+    if (cleaned.length > 0) {
+        return { type: 'search', value: cleaned };
     }
+
+    return null;
 }
 
 /**
@@ -83,12 +114,11 @@ function parseActualSongUriFromBigMessage(message) {
  * @returns {string|false} The track ID if it is not blocked, or false if it is
  */
 function getTrackId(url, currentConfig) {
-    let trackId = url.split('/').pop().split('?')[0];
-    if (currentConfig.blocked_tracks.includes(trackId)) {
-        return false;
-    } else {
-        return trackId;
-    }
+    if (typeof url !== 'string') return false;
+    const match = url.trim().match(SPOTIFY_TRACK_URL_REGEX);
+    if (!match) return false;
+    const trackId = match[1];
+    return config.blocked_tracks.includes(trackId) ? false : trackId;
 }
 
 /**

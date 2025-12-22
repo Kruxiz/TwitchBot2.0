@@ -86,6 +86,7 @@
             .replace('{{command_alias}}', currentConfig.command_alias.join(','))
             .replace('{{skip_alias}}', currentConfig.skip_alias.join(','))
             .replace('{{max_duration}}', currentConfig.max_duration)
+            .replace('{{disable_duplicates_in_queue_checked}}', currentConfig.disable_duplicates_in_queue ? 'checked' : '')
             .replace('{{usage_type_options}}', usageTypes.map(t =>
                 `<option value="${t}" ${currentConfig.usage_types.includes(t) ? 'selected' : ''}>${t}</option>`
             ).join(''));
@@ -110,6 +111,7 @@
             currentConfig.use_skip_command = req.body.use_skip_command === 'on';
             currentConfig.automatic_refunds = req.body.redemption_management === 'on';
             currentConfig.logs = req.body.logs === 'on';
+            currentConfig.disable_duplicates_in_queue = req.body.disable_duplicates_in_queue === 'on';
             
             currentConfig.command_user_level = Array.isArray(req.body.song_levels) 
                 ? req.body.song_levels 
