@@ -126,7 +126,7 @@ bins
 .vscode
 controllers/twitch_token.json
 jest.config.js
-spotipack_config.yaml
 tokens/
 tests/
+spotipack_config.yaml
 spotipack_config.yaml

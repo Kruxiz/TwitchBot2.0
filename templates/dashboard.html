@@ -69,6 +69,11 @@
           <label class="form-label">Max Duration (seconds)</label>
           <input type="number" class="form-control" name="max_duration" value="{{max_duration}}">
         </div>
+        <div>
+          <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" name="disable_duplicates_in_queue" {{disable_duplicates_in_queue_checked}}>
+            <label class="form-check-label">Disable Duplicate Songs in Queue</label>
+        </div>
       </div>
 
       <!-- Redemption Settings -->

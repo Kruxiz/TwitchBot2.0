@@ -33,7 +33,13 @@ let handleSongRequest = async (client, channel, username, message, tags, spotify
         usersOnCooldown.add(username);
         setTimeout(() => usersOnCooldown.delete(username), config.cooldown_duration * 1000);
     }
-
+    if (config.disable_duplicates_in_queue) {
+        let duplicateCheck = await spotifyAPI.getQueue();
+        if (duplicateCheck && duplicateCheck.some(track => track.id === songId)) {
+            client.say(channel, `${username}, that song is already in the queue.`);
+            return false;
+        }
+    }
     return addSongToQueue(client, songId, channel, username, tags, spotifyAPI, config);
 };
 
@@ -51,18 +57,53 @@ let handleSongRequest = async (client, channel, username, message, tags, spotify
  * @returns {Promise<string|boolean>} A promise which resolves to the validated song id if one is found, otherwise false.
  */
 let validateSongRequest = async (message, channel, config, spotifyAPI) => {
-    const parsedUrl = parseActualSongUrlFromBigMessage(message, config);
-    if (parsedUrl) return getTrackId(parsedUrl, config);
+    if (!message || typeof message !== 'string') return false;
+    const cleanedMessage = message.trim();
 
-    const parsedUri = parseActualSongUriFromBigMessage(message, config);
-    if (parsedUri) return getTrackId(parsedUri, config);
+    // 1 Check if it's a Spotify URL
+    if (/open\.spotify\.com/i.test(cleanedMessage)) {
+        const parsedUrl = parseActualSongUrlFromBigMessage(cleanedMessage);
+        if (parsedUrl) {
+            const trackId = getTrackId(parsedUrl, config);
+            if (trackId) return trackId;
+            log(`Blocked or invalid Spotify URL: ${parsedUrl}`, config);
+            return false;
+        }
+        return false; // contains spotify.com but not a valid track
+    }
 
+    // 2 Check if it's a Spotify URI
+    if (cleanedMessage.startsWith('spotify:track:')) {
+        const parsedUri = parseActualSongUriFromBigMessage(cleanedMessage);
+        if (parsedUri) {
+            const trackId = getTrackId(parsedUri, config);
+            if (trackId) return trackId;
+            log(`Blocked or invalid Spotify URI: ${parsedUri}`, config);
+            return false;
+        }
+        return false;
+    }
+
+    // 3 Reject non-Spotify URLs outright
+    if (/https?:\/\//i.test(cleanedMessage)) {
+        log(`Rejected non-Spotify URL: ${cleanedMessage}`, config);
+        return false;
+    }
+
+    // 4 Otherwise, treat as a search term
     try {
-        const foundTrack = await spotifyAPI.searchTrackID(message, config);
-        if (!foundTrack) log(`No track found for: ${message}`, config);
+        const foundTrack = await spotifyAPI.searchTrackID(cleanedMessage, config);
+        if (!foundTrack) {
+            log(`No Spotify track found for: "${cleanedMessage}"`, config);
+            return false;
+        }
+        if (config.blocked_tracks?.includes(foundTrack)) {
+            log(`Blocked track found during search: ${foundTrack}`, config);
+            return false;
+        }
         return foundTrack;
     } catch (error) {
-        console.error(`Error while searching for track: ${error.message}`);
+        console.error(`Error while searching for track "${cleanedMessage}": ${error.message}`);
         return false;
     }
 }
