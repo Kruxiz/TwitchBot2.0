@@ -1,71 +1,190 @@
-// twitchController.js
+// controllers/twitchController.js
 const axios = require('axios');
 const path = require('path');
-const open = require('open');
-const { ToadScheduler, SimpleIntervalJob, AsyncTask } = require('toad-scheduler');
 const fs = require('fs');
-const express = require('express');
+const crypto = require('crypto');
+const { ToadScheduler, SimpleIntervalJob, AsyncTask } = require('toad-scheduler');
 
 module.exports = class TwitchController {
+  constructor({ clientId, clientSecret, redirectUri }) {
+    if (!clientId) throw new Error('Twitch clientId missing');
+    if (!clientSecret) throw new Error('Twitch clientSecret missing');
+    if (!redirectUri) throw new Error('Twitch redirectUri missing');
+
+    this.refunds_active = true;
+
+    this.CLIENT_ID = clientId;
+    this.CLIENT_SECRET = clientSecret;
+    this.REDIRECT_URI = redirectUri;
+
+    this.TOKEN_FILE = path.join(__dirname, '../tokens/twitch_token.json');
+
+    // OAuth coordination (so index.js can await readiness if desired)
+    this._oauthState = null;
+    this._readyResolve = null;
+    this._readyReject = null;
+    this._readyPromise = new Promise((res, rej) => {
+      this._readyResolve = res;
+      this._readyReject = rej;
+    });
+  }
+
+  registerRoutes(app) {
+    // Start auth
+    app.get('/auth/twitch', (req, res) => {
+      res.redirect(this.getAuthUrl());
+    });
+
+    // Callback
+    app.get('/callback/twitch', this._handleCallback.bind(this));
+
+    console.log('Twitch routes registered: /auth/twitch, /callback/twitch');
+  }
+
+  waitUntilReady() {
+    return this._readyPromise;
+  }
+
+  /**
+   * If token exists+valid -> returns null.
+   * If token missing/invalid -> returns the auth URL to open.
+   */
+  async getAuthUrlIfNeeded() {
+    this.token = this.getSavedToken();
+    if (this.token) {
+      const ok = await this.validateTwitchToken();
+      if (ok) {
+        this._readyResolve(true);
+        return null;
+      }
+    }
+    return this.getAuthUrl();
+  }
+
+  /**
+   * Returns the Twitch OAuth authorization URL to open.
+   *
+   * Generates a valid Twitch OAuth authorization URL using the client ID, redirect URI, scope, and state.
+   * The URL is of the form: https://id.twitch.tv/oauth2/authorize?client_id=...&redirect_uri=...&response_type=code&scope=...&state=...
+   *
+   * @returns {string} The Twitch OAuth authorization URL to open.
+   */
+  getAuthUrl() {
+    this._oauthState = crypto.randomBytes(16).toString('hex');
+
+    const scope =
+      'channel:read:redemptions channel:manage:redemptions user:read:email chat:read chat:edit clips:edit';
+
+    return (
+      `https://id.twitch.tv/oauth2/authorize` +
+      `?client_id=${encodeURIComponent(this.CLIENT_ID)}` +
+      `&redirect_uri=${encodeURIComponent(this.REDIRECT_URI)}` +
+      `&response_type=code` +
+      `&scope=${encodeURIComponent(scope)}` +
+      `&state=${encodeURIComponent(this._oauthState)}`
+    );
+  }
+
 /**
- * Initializes a new instance of the TwitchController class.
- * Sets the client ID and client secret from environment variables.
- * Initializes the redirect URI for OAuth callbacks.
- * Activates refunds by default.
+ * Handles the Twitch OAuth callback from the authorization flow.
+ *
+ * This function validates the authorization code query parameter, exchanges it for an access token, and
+ * saves the token payload to a file. If validation fails or the token exchange fails, it sets the
+ * `_readyReject` promise to an error object with a descriptive message.
+ *
+ * @param {object} req - The Express request object.
+ * @param {object} res - The Express response object.
+ * @returns {void} Nothing is returned, but the `_readyPromise` is resolved or rejected based on the result of
+ * the authorization flow.
  */
-    constructor() {
-        this.refunds_active = true; // refunds are active by default
-        this.CLIENT_ID = process.env.TWITCH_CLIENT_ID;
-        this.CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
-        this.REDIRECT_URI = 'http://localhost:3000/callback';
-        this.TOKEN_FILE = path.join(__dirname, '../tokens/twitch_token.json');
+  async _handleCallback(req, res) {
+    try {
+      const { code, state, error, error_description } = req.query;
+
+      if (error) {
+        res.status(400).send(`Twitch OAuth error: ${error} ${error_description || ''}`);
+        this._readyReject(new Error(`Twitch OAuth error: ${error}`));
+        return;
+      }
+
+      if (!code) {
+        res.status(400).send('Missing "code" from Twitch');
+        this._readyReject(new Error('Missing Twitch code'));
+        return;
+      }
+
+      if (!state || state !== this._oauthState) {
+        res.status(400).send('Invalid state (possible CSRF or stale login).');
+        this._readyReject(new Error('Invalid Twitch OAuth state'));
+        return;
+      }
+
+      const tokenRes = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+        params: {
+          client_id: this.CLIENT_ID,
+          client_secret: this.CLIENT_SECRET,
+          code,
+          grant_type: 'authorization_code',
+          redirect_uri: this.REDIRECT_URI,
+        },
+      });
+
+      // Ensure folder exists, save token payload
+      const folder = path.dirname(this.TOKEN_FILE);
+      fs.mkdirSync(folder, { recursive: true });
+      fs.writeFileSync(this.TOKEN_FILE, JSON.stringify(tokenRes.data, null, 2), 'utf8');
+
+      this.token = tokenRes.data.access_token;
+
+      res.send('✅ Twitch OAuth complete. You may now close this tab.');
+      this._readyResolve(true);
+    } catch (err) {
+      console.error('Twitch OAuth callback error:', err.response?.data || err.message);
+      res.status(500).send('Twitch OAuth failed');
+      this._readyReject(err);
+    }
+  }
+
+  async init(chatbotConfig) {
+    // Load token (if any) and validate
+    this.token = this.getSavedToken();
+
+    if (!this.token) {
+      // Token missing -> wait for OAuth callback
+      console.log('[Twitch] No saved token. Visit /auth/twitch to connect.');
+      // Don’t resolve here; index.js should open auth URL if needed and then waitUntilReady()
+      await this.waitUntilReady();
+    } else {
+      console.log('[Twitch] Loaded saved Twitch token.');
+      const ok = await this.validateTwitchToken();
+      if (!ok) {
+        console.warn('[Twitch] Saved token invalid/expired. Visit /auth/twitch to reconnect.');
+        await this.waitUntilReady();
+      }
     }
 
-    async init(chatbotConfig) {
-        // Try passed token or fallback to saved token
-        this.token = this.getSavedToken();
-        if (!this.token) {
-            console.log("No saved token found, starting OAuth flow...");
-            await this.startOAuthServer();
-            this.token = this.getSavedToken();  // Retrieve token saved by startOAuthServer
-        } else {
-            console.log("Loaded saved Twitch token.");
-            const isValid = await this.validateTwitchToken();
-            if (!isValid) {
-                console.warn("Saved token is invalid or expired. Starting OAuth flow...");
-                await this.startOAuthServer();
-                this.token = this.getSavedToken();
+    // At this point, we should have a token
+    this.broadcaster_id = await this.getBroadcasterId(chatbotConfig.channel_name);
 
-                // Optionally: validate the new token again
-                const newIsValid = await this.validateTwitchToken();
-                if (!newIsValid) {
-                    console.error("Newly obtained token is still invalid. Initialization failed.");
-                    return;
-                }
-            }
-        }
+    // Create/check reward
+    await this.checkRewardExistence(chatbotConfig);
 
-        this.broadcaster_id = await this.getBroadcasterId(chatbotConfig.channel_name);
-        // check if the reward exists, if not create it
-        await this.checkRewardExistence(chatbotConfig);
+    // Token validation scheduler
+    this.scheduler = new ToadScheduler();
+    const validateTask = new AsyncTask('ValidateTwitchToken', async () => {
+      await this.validateTwitchToken();
+    });
+    const validateJob = new SimpleIntervalJob({ hours: 1, runImmediately: true }, validateTask);
+    this.scheduler.addSimpleIntervalJob(validateJob);
 
-        // Set up token validation job
-        this.scheduler = new ToadScheduler();
-        const validateTask = new AsyncTask('ValidateTwitchToken', async () => {
-            await this.validateTwitchToken();
-        });
-        const validateJob = new SimpleIntervalJob({ hours: 1, runImmediately: true }, validateTask);
-        this.scheduler.addSimpleIntervalJob(validateJob);
-
-        // Validate token and check reward
-        if (!this.refunds_active) {
-            console.error("Refunds were enabled, but token validation failed.");
-            this.reward_id = chatbotConfig.custom_reward_id;
-            return;
-        }
+    if (!this.refunds_active) {
+      console.error('[Twitch] Refunds disabled due to token validation failure.');
+      this.reward_id = chatbotConfig.custom_reward_id;
+      return;
     }
+  }
 
-    /**
+      /**
      * Creates a Twitch clip for the current broadcaster.
      *
      * This function sends a request to the Twitch API to create a clip of the 
@@ -75,7 +194,7 @@ module.exports = class TwitchController {
      * @returns {Promise<string|null>} - Returns the URL of the created clip if 
      * successful, otherwise returns null if an error occurs.
      */
-    async createClip() {
+      async createClip() {
         //Create the Clip
         try {
             const res = await axios.post('https://api.twitch.tv/helix/clips', null, {
@@ -93,102 +212,14 @@ module.exports = class TwitchController {
         }
     }
 
-/**
- * Starts a local Express server to handle the OAuth flow for Twitch authentication.
- * 
- * This server listens on port 3000 and provides two endpoints:
- * 1. `/login`: Redirects the user to the Twitch OAuth authorization page for user authentication.
- * 2. `/callback`: Handles the OAuth callback with the authorization code, exchanges it for an access token,
- *    and saves the token data to a file for future use. Closes the server after completing the flow.
- * 
- * The function returns a Promise that resolves with the access token upon successful authentication,
- * or rejects with an error if the OAuth process fails.
- */
-startOAuthServer() {
-        return new Promise((resolve, reject) => {
-            const app = express();
-
-            // OAuth login route
-            app.get('/login', (req, res) => {
-                const scope = 'channel:read:redemptions channel:manage:redemptions user:read:email chat:read chat:edit clips:edit';
-                const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${this.CLIENT_ID}&redirect_uri=${encodeURIComponent(this.REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(scope)}`;
-                res.redirect(authUrl);
-            });
-
-            // OAuth callback route
-            app.get('/callback', async (req, res) => {
-                const code = req.query.code;
-                console.log("Received OAuth code:", code); // Debug log to ensure callback is hit
-                try {
-                    const tokenRes = await axios.post('https://id.twitch.tv/oauth2/token', null, {
-                        params: {
-                            client_id: this.CLIENT_ID,
-                            client_secret: this.CLIENT_SECRET,
-                            code,
-                            grant_type: 'authorization_code',
-                            redirect_uri: this.REDIRECT_URI
-                        }
-                    });
-
-                    // Ensure the folder exists
-                    const folder = path.dirname(this.TOKEN_FILE);
-                    if (!fs.existsSync(folder)) {
-                        fs.mkdirSync(folder, { recursive: true });
-                        console.log(`Created folder for tokens: ${folder}`);
-                    }
-
-                    // Save the token to file
-                    fs.writeFileSync(this.TOKEN_FILE, JSON.stringify(tokenRes.data, null, 2));
-                    console.log("Twitch token saved to file.");
-                    this.token = tokenRes.data.access_token;
-
-                    // Send response to user
-                    res.send("Twitch OAuth complete. You may now close this tab.");
-                    resolve(this.token);
-                } catch (err) {
-                    console.error("OAuth error:", err.response?.data || err.message);
-                    res.status(500).send("OAuth failed");                  
-                } finally {
-                    // Ensure the server is closed after all operations, even in case of error
-                    console.log("Closing OAuth server...");
-                    server.close(() => {
-                        console.log("OAuth server closed.");
-                        resolve(this.token);
-                    });
-                }
-            });
-
-            // Start the server and open the OAuth login page
-            const server = app.listen(3000, () => {
-                open(`http://localhost:3000/login`);
-                console.log("OAuth server started on http://localhost:3000.");
-            });
-
-            // Log server startup to confirm it's running
-            console.log("OAuth server is now running...");
-        });
+  getSavedToken() {
+    if (fs.existsSync(this.TOKEN_FILE)) {
+      const data = JSON.parse(fs.readFileSync(this.TOKEN_FILE, 'utf8'));
+      this.token = data.access_token;
+      return this.token;
     }
-
-
-    /**
-     * Retrieves the saved Twitch access token from a file.
-     * 
-     * This function checks if the token file exists and reads the access token from it.
-     * If the token is successfully read, it updates the internal token state and returns it.
-     * If the token file does not exist, the function returns false.
-     * 
-     * @returns {string|boolean} The access token if it exists, otherwise false.
-     */
-
-    getSavedToken() {
-        if (fs.existsSync(this.TOKEN_FILE)) {
-            const data = JSON.parse(fs.readFileSync(this.TOKEN_FILE));
-            this.token = data.access_token;
-            return this.token;
-            console.log(`token: ${this.token}`);
-        }
-        return false;
-    }
+    return null;
+  }
 
 /**
 * Refreshes the Twitch access token using the refresh token stored in a file.
@@ -199,253 +230,251 @@ startOAuthServer() {
 * data back to the file. If refreshing fails, it logs the error and returns false.
 * 
 * @returns {Promise<boolean>} Resolves to true if the token was refreshed successfully, otherwise false.
-*/    async refreshAccessToken() {
-        if (!fs.existsSync(this.TOKEN_FILE)) {
-            console.error("No refresh token available.");
-            return false;
-        }
-
-        const tokenData = JSON.parse(fs.readFileSync(this.TOKEN_FILE));
-        if (!tokenData.refresh_token) {
-            console.error("Refresh token missing from token file.");
-            return false;
-        }
-
-        try {
-            const res = await axios.post('https://id.twitch.tv/oauth2/token', null, {
-                params: {
-                    grant_type: 'refresh_token',
-                    refresh_token: tokenData.refresh_token,
-                    client_id: this.CLIENT_ID,
-                    client_secret: this.CLIENT_SECRET
-                }
-            });
-
-            this.token = res.data.access_token;
-
-            // Save updated tokens to file
-            fs.writeFileSync(this.TOKEN_FILE, JSON.stringify(res.data, null, 2));
-            console.log("Access token refreshed successfully.");
-            return true;
-        } catch (err) {
-            console.error("Failed to refresh access token:", err.response?.data || err.message);
-            return false;
-        }
+*/  async refreshAccessToken() {
+    if (!fs.existsSync(this.TOKEN_FILE)) {
+      console.error('No refresh token available.');
+      return false;
     }
+
+    const tokenData = JSON.parse(fs.readFileSync(this.TOKEN_FILE, 'utf8'));
+    if (!tokenData.refresh_token) {
+      console.error('Refresh token missing from token file.');
+      return false;
+    }
+
+    try {
+      const res = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+        params: {
+          grant_type: 'refresh_token',
+          refresh_token: tokenData.refresh_token,
+          client_id: this.CLIENT_ID,
+          client_secret: this.CLIENT_SECRET,
+        },
+      });
+
+      this.token = res.data.access_token;
+
+      fs.writeFileSync(this.TOKEN_FILE, JSON.stringify(res.data, null, 2), 'utf8');
+      console.log('Access token refreshed successfully.');
+      return true;
+    } catch (err) {
+      console.error('Failed to refresh access token:', err.response?.data || err.message);
+      return false;
+    }
+  }
 
     /**
      * Formats auth headers
      * @returns {{Authorization: string, "Client-ID": string}}
      */
-    getTwitchHeaders() {
-        return {
-            'Authorization': `Bearer ${this.token}`,
-            'Client-ID': this.CLIENT_ID
-        };
-    }
+  getTwitchHeaders() {
+    return {
+      Authorization: `Bearer ${this.token}`,
+      'Client-ID': this.CLIENT_ID,
+    };
+  }
 
-/**
+  /**
  * Check if we have created a reward in a past session. If so, we will use that reward.
  * Otherwise we will create a new reward.
  * @param chatbotConfig - for settings in order to create a new reward
  */
 async checkRewardExistence(chatbotConfig) {
-        try {
-            let res = await axios.get('https://api.twitch.tv/helix/channel_points/custom_rewards', {
-                params: {
-                    'broadcaster_id': this.broadcaster_id,
-                    'only_manageable_rewards': true
-                },
-                headers: this.getTwitchHeaders()
-            });
-            if (res.data.data.length === 0) {
-                await this.createReward(chatbotConfig.custom_reward_name, chatbotConfig.custom_reward_cost);
-            }
-            else {
-                this.reward_id = res.data.data[0].id;
-            }
-        } catch (error) {
-            console.error(error);
+    try {
+        let res = await axios.get('https://api.twitch.tv/helix/channel_points/custom_rewards', {
+            params: {
+                'broadcaster_id': this.broadcaster_id,
+                'only_manageable_rewards': true
+            },
+            headers: this.getTwitchHeaders()
+        });
+        if (res.data.data.length === 0) {
+            await this.createReward(chatbotConfig.custom_reward_name, chatbotConfig.custom_reward_cost);
         }
+        else {
+            this.reward_id = res.data.data[0].id;
+        }
+    } catch (error) {
+        console.error(error);
     }
+}
 
 /**
- * Validates the current Twitch OAuth token.
- * Attempts to verify the token by making a GET request to the Twitch validation endpoint.
- * If the token is invalid, it tries to refresh the token. If refreshing fails, it disables refunds but keeps the chat active.
- * Checks if the token has the necessary scope for managing redemptions. If not, disables refunds.
- * Updates the `refunds_active` state based on the validation results.
- * Logs relevant information and errors during the process.
- */
-async validateTwitchToken() {
-        try {
-            let res = await axios.get('https://id.twitch.tv/oauth2/validate', {
-                headers: { 'Authorization': `OAuth ${this.token}` },
-                validateStatus: (status) => [200, 401].includes(status)
-            });
+* Validates the current Twitch OAuth token.
+* Attempts to verify the token by making a GET request to the Twitch validation endpoint.
+* If the token is invalid, it tries to refresh the token. If refreshing fails, it disables refunds but keeps the chat active.
+* Checks if the token has the necessary scope for managing redemptions. If not, disables refunds.
+* Updates the `refunds_active` state based on the validation results.
+* Logs relevant information and errors during the process.
+*/
+  async validateTwitchToken() {
+    try {
+      const res = await axios.get('https://id.twitch.tv/oauth2/validate', {
+        headers: { Authorization: `OAuth ${this.token}` },
+        validateStatus: (status) => [200, 401].includes(status),
+      });
 
-            if (res.status === 401) {
-                console.warn('[Twitch] Token invalid, attempting refresh...');
-                const refreshed = await this.refreshAccessToken();
-
-                if (!refreshed) {
-                    console.error('[Twitch] Token refresh failed. Refunds will be disabled, but chat will remain active.');
-                    this.refunds_active = false;
-                    return false;  // return false here!
-                }
-
-                // Revalidate with new token
-                return await this.validateTwitchToken();
-            }
-
-            if (res.status === 200 && !res.data['scopes'].includes('channel:manage:redemptions')) {
-                console.warn('[Twitch] Token is valid, but missing "channel:manage:redemptions". Channel Points handling disabled.');
-                this.refunds_active = false;
-                return false;  // return false: valid token but missing scope
-            } else if (res.status === 200) {
-                this.refunds_active = true;
-                return true;  // return true: valid token & has required scope
-            }
-
-        } catch (error) {
-            console.error('[Twitch] Token validation error:', error);
-            this.refunds_active = false;
-            return false;  // ⬅️ return false in case of exception
+      if (res.status === 401) {
+        console.warn('[Twitch] Token invalid, attempting refresh...');
+        const refreshed = await this.refreshAccessToken();
+        if (!refreshed) {
+          console.error('[Twitch] Token refresh failed. Refunds will be disabled.');
+          this.refunds_active = false;
+          return false;
         }
-    }
+        return await this.validateTwitchToken();
+      }
 
-/**
+      if (res.status === 200 && !res.data.scopes.includes('channel:manage:redemptions')) {
+        console.warn('[Twitch] Token valid but missing channel:manage:redemptions.');
+        this.refunds_active = false;
+        return false;
+      }
+
+      this.refunds_active = true;
+      return true;
+    } catch (error) {
+      console.error('[Twitch] Token validation error:', error);
+      this.refunds_active = false;
+      return false;
+    }
+  }
+  /**
  * Refunds points, returns true is successful, false otherwise.
  * @returns {Promise<boolean>}
  */
 async refundPoints() {
-        // refunds not activated.
-        if (!this.refunds_active) { return false; }
-        try {
-            let id = await this.getLastRedemptionId();
-            if (id === null) { return false; }
-            await axios.patch(`https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions`,
-                { 'status': 'CANCELED' },
-                {
-                    params: {
-                        'id': id,
-                        'broadcaster_id': this.broadcaster_id,
-                        'reward_id': this.reward_id
-                    },
-                    headers: this.getTwitchHeaders()
-                });
-            return true;
-        } catch (error) {
-            return false;
-        }
-
-    }
-
-/**
- * Completes Point Redemption, returns true if successful, false otherwise.
- * @returns {Promise<boolean>}
- */
-async fulfillRedemption() {
-        if (!this.refunds_active) { return false; }
-        try {
-            let id = await this.getLastRedemptionId();
-            if (id === null) { return false; }
-            await axios.patch(`https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions`,
-                { 'status': 'FULFILLED' },
-                {
-                    params: {
-                        'id': id,
-                        'broadcaster_id': this.broadcaster_id,
-                        'reward_id': this.reward_id
-                    },
-                    headers: this.getTwitchHeaders()
-                });
-            return true;
-        } catch (error) {
-            return false;
-        }
-
-    }
-
-/**
- * Creates a new channel point reward
- * @param name - name of the new reward
- * @param cost - cost of the new reward
- */
-async createReward(name, cost) {
-        try {
-            let res = await axios.post('https://api.twitch.tv/helix/channel_points/custom_rewards',
-                {
-                    'title': name,
-                    'cost': parseInt(cost),
-                    'is_user_input_required': true
-                },
-                {
-                    params: { 'broadcaster_id': this.broadcaster_id },
-                    headers: this.getTwitchHeaders()
-                });
-            this.reward_id = res.data.data.id;
-        } catch (error) {
-            console.error(error);
-        }
-    }
-
-/**
- * Gets current broadcaster_id from channel_name
- * @param broadcaster_name
- */
-async getBroadcasterId(broadcaster_name) {
-        try {
-            let res = await axios.get('https://api.twitch.tv/helix/users',
-                {
-                    params: { 'login': broadcaster_name },
-                    headers: this.getTwitchHeaders(),
-                    validateStatus: function (status) {
-                        return status < 500;
-                    }
-                });
-            if (res.status === 200) {
-                return res.data.data[0].id;
-            }
-            // this is fatal and many parts will not work without this, means twitch oauth is broken
-            console.error("Failed to get broadcaster ID!");
-            console.error("This likely means your OAuth token is invalid. Please check your token. If this error persists, contact devs.");
-        } catch (error) {
-            console.error(error);
-        }
-    }
-
-/**
- * Gets the id of the last redemption for use in refundPoints()
- * @returns {Promise<string>}
- */
-async getLastRedemptionId() {
-        try {
-            let res = await axios.get('https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions', {
+    // refunds not activated.
+    if (!this.refunds_active) { return false; }
+    try {
+        let id = await this.getLastRedemptionId();
+        if (id === null) { return false; }
+        await axios.patch(`https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions`,
+            { 'status': 'CANCELED' },
+            {
                 params: {
+                    'id': id,
                     'broadcaster_id': this.broadcaster_id,
-                    'reward_id': this.reward_id,
-                    'status': 'UNFULFILLED',
-                    'sort': 'NEWEST',
-                    'first': 1
+                    'reward_id': this.reward_id
                 },
                 headers: this.getTwitchHeaders()
             });
-            // Check that the returned array isn't empty
-            if (res.data.data.length === 0) {
-                console.error(`The redemptions array was empty. ` +
-                    `Please make sure that you have not enabled 'skip redemption requests queue.'`);
-                return null;
-            }
-            // If the last redeemed ID was over a minute ago, something is wrong.
-            if (Date.now() - Date.parse(res.data.data[0].redeemed_at) > 60_000) {
-                console.error(`The latest reward was redeemed over a minute ago. Please contact the devs.`);
-                return null;
-            }
-            return res.data.data[0].id;
-        } catch (error) {
-            console.error(error);
-        }
+        return true;
+    } catch (error) {
+        return false;
+    }
 
+}
+
+/**
+* Completes Point Redemption, returns true if successful, false otherwise.
+* @returns {Promise<boolean>}
+*/
+async fulfillRedemption() {
+    if (!this.refunds_active) { return false; }
+    try {
+        let id = await this.getLastRedemptionId();
+        if (id === null) { return false; }
+        await axios.patch(`https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions`,
+            { 'status': 'FULFILLED' },
+            {
+                params: {
+                    'id': id,
+                    'broadcaster_id': this.broadcaster_id,
+                    'reward_id': this.reward_id
+                },
+                headers: this.getTwitchHeaders()
+            });
+        return true;
+    } catch (error) {
+        return false;
+    }
+
+}
+
+/**
+* Creates a new channel point reward
+* @param name - name of the new reward
+* @param cost - cost of the new reward
+*/
+async createReward(name, cost) {
+    try {
+        let res = await axios.post('https://api.twitch.tv/helix/channel_points/custom_rewards',
+            {
+                'title': name,
+                'cost': parseInt(cost),
+                'is_user_input_required': true
+            },
+            {
+                params: { 'broadcaster_id': this.broadcaster_id },
+                headers: this.getTwitchHeaders()
+            });
+        this.reward_id = res.data.data[0].id;
+    } catch (error) {
+        console.error(error);
     }
 }
+
+/**
+* Gets current broadcaster_id from channel_name
+* @param broadcaster_name
+*/
+async getBroadcasterId(broadcaster_name) {
+    try {
+        let res = await axios.get('https://api.twitch.tv/helix/users',
+            {
+                params: { 'login': broadcaster_name },
+                headers: this.getTwitchHeaders(),
+                validateStatus: function (status) {
+                    return status < 500;
+                }
+            });
+        if (res.status === 200) {
+            return res.data.data[0].id;
+        }
+        // this is fatal and many parts will not work without this, means twitch oauth is broken
+        console.error("Failed to get broadcaster ID!");
+        console.error("This likely means your OAuth token is invalid. Please check your token. If this error persists, contact devs.");
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+/**
+* Gets the id of the last redemption for use in refundPoints()
+* @returns {Promise<string>}
+*/
+async getLastRedemptionId() {
+    try {
+        let res = await axios.get('https://api.twitch.tv/helix/channel_points/custom_rewards/redemptions', {
+            params: {
+                'broadcaster_id': this.broadcaster_id,
+                'reward_id': this.reward_id,
+                'status': 'UNFULFILLED',
+                'sort': 'NEWEST',
+                'first': 1
+            },
+            headers: this.getTwitchHeaders()
+        });
+        // Check that the returned array isn't empty
+        if (res.data.data.length === 0) {
+            console.error(`The redemptions array was empty. ` +
+                `Please make sure that you have not enabled 'skip redemption requests queue.'`);
+            return null;
+        }
+        // If the last redeemed ID was over a minute ago, something is wrong.
+        if (Date.now() - Date.parse(res.data.data[0].redeemed_at) > 60_000) {
+            console.error(`The latest reward was redeemed over a minute ago. Please contact the devs.`);
+            return null;
+        }
+        return res.data.data[0].id;
+    } catch (error) {
+        console.error(error);
+        return null;
+    }
+
+}
+
+  // keep: createClip, checkRewardExistence, createReward, getBroadcasterId, refundPoints, fulfillRedemption, getLastRedemptionId...
+};
+        

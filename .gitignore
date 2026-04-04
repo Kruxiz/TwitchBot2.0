@@ -129,4 +129,4 @@ jest.config.js
 tokens/
 tests/
 spotipack_config.yaml
-spotipack_config.yaml
+secrets.json

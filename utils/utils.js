@@ -118,7 +118,7 @@ function getTrackId(url, currentConfig) {
     const match = url.trim().match(SPOTIFY_TRACK_URL_REGEX);
     if (!match) return false;
     const trackId = match[1];
-    return config.blocked_tracks.includes(trackId) ? false : trackId;
+    return currentConfig.blocked_tracks.includes(trackId) ? false : trackId;
 }
 
 /**
