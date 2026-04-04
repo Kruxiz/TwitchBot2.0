@@ -1,15 +1,33 @@
 // services/spotify/SpotifyPlayerService.js
 
 const axios = require('axios');
+const DomainEvents = require('../../core/DomainEvents');
+const RetryableHttpClient = require('../../utils/RetryableHttpClient');
 
 /**
  * SpotifyPlayerService - Manages Spotify playback and player state
  * Handles volume, playback control, and current track information
  */
 class SpotifyPlayerService {
-  constructor(authService) {
+  constructor(authService, eventBus) {
     this.authService = authService;
+    this.eventBus = eventBus;
     this.baseURL = 'https://api.spotify.com/v1/me/player';
+    this.client = new RetryableHttpClient(eventBus, 'spotify-player', {
+      baseURL: this.baseURL,
+      timeout: 10000
+    });
+  }
+
+  /**
+   * Emits an event via EventBus
+   * @param {string} event - DomainEvents.Spotify.* constant
+   * @param {Object} data - Event payload
+   */
+  emit(event, data) {
+    if (this.eventBus) {
+      this.eventBus.emit(event, data);
+    }
   }
 
   /**
@@ -126,6 +144,9 @@ class SpotifyPlayerService {
           params: { volume_percent: volume }
         }
       );
+
+      // Emit volume changed event
+      this.emit(DomainEvents.Spotify.VolumeChanged, { volume });
     } catch (error) {
       throw new Error(`Failed to set volume to ${volume}: ${error.message}`);
     }
@@ -139,6 +160,9 @@ class SpotifyPlayerService {
     try {
       const headers = await this.getHeaders();
       await axios.put(`${this.baseURL}/pause`, {}, { headers });
+
+      // Emit playback paused event
+      this.emit(DomainEvents.Spotify.PlaybackPaused, {});
     } catch (error) {
       throw new Error(`Failed to pause playback: ${error.message}`);
     }
@@ -152,6 +176,9 @@ class SpotifyPlayerService {
     try {
       const headers = await this.getHeaders();
       await axios.put(`${this.baseURL}/play`, {}, { headers });
+
+      // Emit playback resumed event
+      this.emit(DomainEvents.Spotify.PlaybackResumed, {});
     } catch (error) {
       throw new Error(`Failed to resume playback: ${error.message}`);
     }
@@ -165,6 +192,9 @@ class SpotifyPlayerService {
     try {
       const headers = await this.getHeaders();
       await axios.post(`${this.baseURL}/next`, {}, { headers });
+
+      // Emit track skipped event
+      this.emit(DomainEvents.Spotify.TrackSkipped, { direction: 'next' });
     } catch (error) {
       throw new Error(`Failed to skip to next track: ${error.message}`);
     }
@@ -178,6 +208,9 @@ class SpotifyPlayerService {
     try {
       const headers = await this.getHeaders();
       await axios.post(`${this.baseURL}/previous`, {}, { headers });
+
+      // Emit track skipped event
+      this.emit(DomainEvents.Spotify.TrackSkipped, { direction: 'previous' });
     } catch (error) {
       throw new Error(`Failed to skip to previous track: ${error.message}`);
     }

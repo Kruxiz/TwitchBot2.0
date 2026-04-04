@@ -1,6 +1,8 @@
 user_name: Kruxiz
 channel_name: Kruxiz
 express_port: 8888
+# express_host: spottybotty.local  # Custom URL for accessing the dashboard (add to hosts file)
+# oauth_host: localhost            # OAuth redirect host - keep as localhost for Twitch/Spotify compatibility
 logs: true
 usage_types:
   - command

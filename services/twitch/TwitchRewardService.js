@@ -1,18 +1,36 @@
 // services/twitch/TwitchRewardService.js
 
 const axios = require('axios');
+const DomainEvents = require('../../core/DomainEvents');
+const RetryableHttpClient = require('../../utils/RetryableHttpClient');
 
 /**
  * TwitchRewardService - Manages Twitch Channel Points rewards and redemptions
  * Handles custom reward creation, redemption monitoring, and refunds
  */
 class TwitchRewardService {
-  constructor(authService, config) {
+  constructor(authService, config, eventBus) {
     this.authService = authService;
     this.config = config;
+    this.eventBus = eventBus;
     this.rewardId = config.custom_reward_id || null;
     this.broadcasterId = null;
     this.redemptionMonitor = null;
+    this.client = new RetryableHttpClient(eventBus, 'twitch-rewards', {
+      baseURL: 'https://api.twitch.tv/helix',
+      timeout: 10000
+    });
+  }
+
+  /**
+   * Emits an event via EventBus
+   * @param {string} event - DomainEvents.Twitch.* constant
+   * @param {Object} data - Event payload
+   */
+  emit(event, data) {
+    if (this.eventBus) {
+      this.eventBus.emit(event, data);
+    }
   }
 
   /**
@@ -276,6 +294,19 @@ class TwitchRewardService {
         const redemptions = await this.getRecentRedemptions('UNFULFILLED');
 
         for (const redemption of redemptions) {
+          // Emit redemption event
+          this.emit(DomainEvents.Twitch.RewardRedeemed, {
+            redemptionId: redemption.id,
+            userId: redemption.user_id,
+            userName: redemption.user_login,
+            input: redemption.user_input,
+            rewardId: redemption.reward.id,
+            rewardTitle: redemption.reward.title,
+            cost: redemption.reward.cost,
+            timestamp: redemption.redeemed_at
+          });
+
+          // Process the redemption
           await onRedemption(redemption);
 
           if (this.config.automatic_refunds) {

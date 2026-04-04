@@ -1,6 +1,15 @@
 // core/Application.js
 
 const express = require('express');
+const EventBus = require('./EventBus');
+const RecoveryManager = require('../errors/RecoveryManager');
+const TwitchAuthService = require('../services/twitch/TwitchAuthService');
+const TwitchChatService = require('../services/twitch/TwitchChatService');
+const TwitchRewardService = require('../services/twitch/TwitchRewardService');
+const SpotifyAuthService = require('../services/spotify/SpotifyAuthService');
+const SpotifyPlayerService = require('../services/spotify/SpotifyPlayerService');
+const SpotifyQueueService = require('../services/spotify/SpotifyQueueService');
+const CommandProcessingService = require('../services/CommandProcessingService');
 
 /**
  * Application Orchestrator
@@ -38,10 +47,11 @@ class Application {
     await this.bootstrap();
 
     // Start HTTP server
+    const host = this.config.express_host || 'localhost';
     this.server = this.expressApp.listen(port, () => {
-      console.log(`🌐 Express server running at http://localhost:${port}`);
-      console.log(`📊 Dashboard available at http://localhost:${port}/dashboard`);
-      console.log(`🎵 Overlay available at http://localhost:${port}/now-playing`);
+      console.log(`🌐 Express server running at http://${host}:${port}`);
+      console.log(`📊 Dashboard available at http://${host}:${port}/dashboard`);
+      console.log(`🎵 Overlay available at http://${host}:${port}/now-playing`);
       this.isRunning = true;
     });
 
@@ -54,7 +64,10 @@ class Application {
    * Creates services, registers routes, connects clients
    */
   async bootstrap() {
-    console.log('⚙️  Bootstrapping application...');
+    // 0. Create EventBus and RecoveryManager (Phase 3) 
+    console.log('🔔 Creating EventBus and RecoveryManager...'); 
+    this.eventBus = new EventBus(); 
+    this.recoveryManager = new RecoveryManager(this.eventBus);
 
     // 1. Create Express app and setup middleware
     this.createExpressApp();
@@ -107,28 +120,57 @@ class Application {
   }
 
   /**
-   * Creates service instances (controllers)
+   * Creates service instances for Phase 3 architecture
    */
   async createServices() {
     console.log('🔧 Creating services...');
 
+    const oauthBaseUrl = `http://${this.config.oauth_host || 'localhost'}:${this.config.express_port || 8888}`;
+
+    // Create auth services
+    const twitchAuth = new TwitchAuthService({
+      clientId: this.secrets.twitch.clientId,
+      clientSecret: this.secrets.twitch.clientSecret,
+      redirectUri: `${oauthBaseUrl}/callback/twitch`
+    });
+
+    const spotifyAuth = new SpotifyAuthService({
+      clientId: this.secrets.spotify.clientId,
+      clientSecret: this.secrets.spotify.clientSecret,
+      redirectUri: `${oauthBaseUrl}/callback/spotify`
+    });
+
+    // Create Twitch services (event-driven)
+    this.services.twitchChat = new TwitchChatService(twitchAuth, this.config, this.eventBus);
+    this.services.twitchRewards = new TwitchRewardService(twitchAuth, this.config, this.eventBus);
+
+    // Create Spotify services (event-driven)
+    this.services.spotifyPlayer = new SpotifyPlayerService(spotifyAuth, this.eventBus);
+    this.services.spotifyQueue = new SpotifyQueueService(spotifyAuth, this.eventBus);
+
+    // Create command processor (consumes events from EventBus)
+    this.services.commandProcessor = new CommandProcessingService(
+      this.eventBus,
+      this.services.twitchChat,
+      {
+        player: this.services.spotifyPlayer,
+        queue: this.services.spotifyQueue
+      },
+      this.config
+    );
+
+    // Keep controllers for OAuth routing (delegating to services)
     const TwitchController = require('../controllers/twitchController');
     const SpotifyController = require('../controllers/spotifyController');
-
-    const baseUrl = `http://localhost:${this.config.express_port || 8888}`;
-
-    // Create Twitch controller
     this.services.twitch = new TwitchController({
       clientId: this.secrets.twitch.clientId,
       clientSecret: this.secrets.twitch.clientSecret,
-      redirectUri: `${baseUrl}/callback/twitch`
+      redirectUri: `http://${this.config.oauth_host || 'localhost'}:${this.config.express_port || 8888}/callback/twitch`
     });
-
-    // Create Spotify controller
     this.services.spotify = new SpotifyController({
       clientId: this.secrets.spotify.clientId,
       clientSecret: this.secrets.spotify.clientSecret,
-      redirectUri: `${baseUrl}/callback/spotify`
+      redirectUri: `http://${this.config.oauth_host || 'localhost'}:${this.config.express_port || 8888}/callback/spotify`
     });
 
     console.log('✅ Services created');
@@ -262,8 +304,9 @@ class Application {
     this.expressApp.use('/assets', express.static('public'));
 
     // Start server
+    const host = this.config.express_host || 'localhost';
     this.server = this.expressApp.listen(port, () => {
-      const url = `http://localhost:${port}/setup`;
+      const url = `http://${host}:${port}/setup`;
       console.log(`🌐 Setup server running at ${url}`);
 
       // Open browser to setup

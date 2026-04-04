@@ -91,5 +91,5 @@ function secretsAreValid(secrets) {
  * @returns {string} Base URL
  */
 function getBaseUrl(config) {
-  return `http://localhost:${config.express_port || 8888}`;
+  return `http://${config.express_host || 'localhost'}:${config.express_port || 8888}`;
 }

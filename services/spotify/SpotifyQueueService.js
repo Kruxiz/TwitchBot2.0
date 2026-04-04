@@ -1,15 +1,33 @@
 // services/spotify/SpotifyQueueService.js
 
 const axios = require('axios');
+const DomainEvents = require('../../core/DomainEvents');
+const RetryableHttpClient = require('../../utils/RetryableHttpClient');
 
 /**
  * SpotifyQueueService - Manages Spotify queue operations
  * Handles adding tracks, queue state, duplicate detection, and search
  */
 class SpotifyQueueService {
-  constructor(authService) {
+  constructor(authService, eventBus) {
     this.authService = authService;
+    this.eventBus = eventBus;
     this.baseURL = 'https://api.spotify.com/v1/me';
+    this.client = new RetryableHttpClient(eventBus, 'spotify-queue', {
+      baseURL: this.baseURL,
+      timeout: 10000
+    });
+  }
+
+  /**
+   * Emits an event via EventBus
+   * @param {string} event - DomainEvents.Spotify.* constant
+   * @param {Object} data - Event payload
+   */
+  emit(event, data) {
+    if (this.eventBus) {
+      this.eventBus.emit(event, data);
+    }
   }
 
   /**
@@ -20,7 +38,7 @@ class SpotifyQueueService {
       const token = await this.authService.getValidToken();
       return {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json`
+        'Content-Type': 'application/json'
       };
     } catch (error) {
       throw new Error(`Failed to get authentication token: ${error.message}`);
@@ -61,6 +79,20 @@ class SpotifyQueueService {
           params: { uri: trackUri }
         }
       );
+
+      // Emit events for queue changes
+      const trackId = trackUri.split(':').pop(); // Extract ID from spotify:track:ID
+      this.emit(DomainEvents.Spotify.TrackQueued, {
+        trackUri,
+        trackId,
+        timestamp: new Date().toISOString()
+      });
+      this.emit(DomainEvents.Spotify.QueueChanged, {
+        action: 'trackAdded',
+        trackUri,
+        trackId,
+        timestamp: new Date().toISOString()
+      });
     } catch (error) {
       throw new Error(`Failed to add track to queue: ${error.message}`);
     }

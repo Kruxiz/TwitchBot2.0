@@ -1,15 +1,24 @@
 // services/twitch/TwitchChatService.js
 
 const tmi = require('tmi.js');
+const DomainEvents = require('../../core/DomainEvents');
+const RetryableHttpClient = require('../../utils/RetryableHttpClient');
 
 /**
  * TwitchChatService - Manages Twitch chat connection and messaging
  * Handles chat client lifecycle, message sending, and event handling
  */
 class TwitchChatService {
-  constructor(authService, config) {
+  constructor(authService, config, eventBus) {
     this.authService = authService;
     this.config = config;
+    this.eventBus = eventBus;
+    this.authService = authService;
+    this.config = config;
+    this.client = new RetryableHttpClient(eventBus, 'twitch-chat', {
+      baseURL: 'https://api.twitch.tv/helix',
+      timeout: 10000
+    });
     this.client = null;
     this.isConnected = false;
     this.eventCallbacks = {};
@@ -56,17 +65,18 @@ class TwitchChatService {
 
   /**
    * Sets up internal event listeners for the chat client
+   * Converts tmi.js events to DomainEvents and emits via EventBus
    */
   setupEventListeners() {
     this.client.on('connected', () => {
       console.log('[TwitchChat] Client connected');
-      this.emit('connected', {});
+      this.emit(DomainEvents.Twitch.ChatConnected, {});
     });
 
     this.client.on('disconnected', (reason) => {
       console.log('[TwitchChat] Client disconnected:', reason);
       this.isConnected = false;
-      this.emit('disconnected', { reason });
+      this.emit(DomainEvents.Twitch.ChatDisconnected, { reason });
     });
 
     this.client.on('reconnect', () => {
@@ -76,7 +86,7 @@ class TwitchChatService {
     this.client.on('message', (channel, tags, message, self) => {
       if (self) return; // Ignore own messages
 
-      this.emit('message', {
+      this.emit(DomainEvents.Twitch.MessageReceived, {
         channel,
         tags,
         message,
@@ -86,7 +96,7 @@ class TwitchChatService {
     });
 
     this.client.on('cheer', (channel, tags, message) => {
-      this.emit('cheer', {
+      this.emit(DomainEvents.Twitch.UserCheered, {
         channel,
         tags,
         message,
@@ -96,7 +106,7 @@ class TwitchChatService {
     });
 
     this.client.on('subscription', (channel, username, method, message, tags) => {
-      this.emit('subscription', {
+      this.emit(DomainEvents.Twitch.UserSubscribed, {
         channel,
         username,
         method,
@@ -106,7 +116,7 @@ class TwitchChatService {
     });
 
     this.client.on('resub', (channel, username, months, message, tags) => {
-      this.emit('resub', {
+      this.emit(DomainEvents.Twitch.UserResubscribed, {
         channel,
         username,
         months,
@@ -129,20 +139,25 @@ class TwitchChatService {
   }
 
   /**
-   * Emits an event to all registered listeners
-   * @param {string} event - Event name
+   * Emits an event to the EventBus
+   * @param {string} event - Event from DomainEvents
    * @param {any} data - Event data
    */
   emit(event, data) {
-    const callbacks = this.eventCallbacks[event];
-    if (callbacks) {
-      callbacks.forEach(callback => {
-        try {
-          callback(data);
-        } catch (error) {
-          console.error(`[TwitchChat] Event listener error for "${event}":`, error);
-        }
-      });
+    if (this.eventBus) {
+      this.eventBus.emit(event, data);
+    } else {
+      // Fallback to local callbacks for backward compatibility
+      const callbacks = this.eventCallbacks[event];
+      if (callbacks) {
+        callbacks.forEach(callback => {
+          try {
+            callback(data);
+          } catch (error) {
+            console.error(`[TwitchChat] Event listener error for "${event}":`, error);
+          }
+        });
+      }
     }
   }
 
