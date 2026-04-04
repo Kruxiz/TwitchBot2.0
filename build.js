@@ -6,14 +6,8 @@ const execSync = require('child_process').execSync;
 
 const distDir = 'dist';
 const filesToCopy = [   'index.js', 
-                        './controllers/twitchController.js',
-                        './controllers/spotifyController.js',
-                        './commands/player.js',
-                        './commands/songRequests.js',
                         'config.js',
                         'eventHandlers.js',
-                        'logger.js',
-                        './utils/utils.js',
                         'updatecheck.js',
                         'package.json', 
                         'run.bat' ];
@@ -26,6 +20,8 @@ try {
     fs.copySync('referenceConfig/spotipack_config.yaml', `${distDir}/spotipack_config.yaml`);
     fs.copySync('templates', `${distDir}/templates`);
     fs.copySync('utils', `${distDir}/utils`);
+    fs.copySync('controllers', `${distDir}/controllers`);
+    fs.copySync('commands', `${distDir}/commands`);
     filesToCopy.map(copyFile);
     execSync(`${zipCommand} ${version}.zip dist`);
 } catch (err) {

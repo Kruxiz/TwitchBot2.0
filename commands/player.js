@@ -221,7 +221,7 @@ handleGetRecentlyPlayed = async (client, channel, tags, spotifyAPI, currentConfi
         log(`Requesting recently played tracks for ${tags[displayNameTag]}...`, currentConfig);
         const eligible = isUserEligible(channel, tags, currentConfig.history_user_level);
         if (!eligible) return;
-        const history = await spotifyAPI.getRecentlyPlayed(client, channel, currentConfig);
+        const history = await spotifyAPI.getRecentlyPlayed();
         client.say(channel, formatHistory(history, currentConfig.history_display_depth));
     } catch (error) {
         log(error, currentConfig);

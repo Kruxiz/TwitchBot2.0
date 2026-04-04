@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "node build.js",
+    "build:win": "caxa --input . --output dist/spotipack.exe --command \"{{caxa}}/node/node.exe {{caxa}}/index.js\" --exclude \"node_modules/.cache\"",
     "test": "jest"
   },
   "keywords": [],

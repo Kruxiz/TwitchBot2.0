@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>First-Time Setup</title>
+  <style>
+    button {
+      position: relative;
+    }
+    
+    .tooltiptext {
+      visibility: hidden;
+      width: 140px;
+      background-color: #555;
+      color: #fff;
+      text-align: center;
+      border-radius: 6px;
+      padding: 5px;
+    
+      position: absolute;
+      z-index: 1;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+    
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    
+    button:hover .tooltiptext {
+      visibility: visible;
+      opacity: 1;
+    }
+    </style>
+</head>
+<body>
+  <h1>First-Time Setup</h1>
+  <p>To get started, you'll need to create developer applications for both Twitch and Spotify to obtain the necessary Client IDs and Client Secrets.</p>
+  <p>Follow these links to create the applications:</p>
+  <ul>
+    <li><a href="https://dev.twitch.tv/console/apps" target="_blank">Twitch Developer Console</a></li>
+    <li><a href="https://developer.spotify.com/dashboard/applications" target="_blank">Spotify Developer Dashboard</a></li>
+  </ul>
+  <p>If you had previously set up an older version of the bot, you can copy your Client IDs and Client Secrets from the Windows Environment Variables.</p>
+  <p>You can then simply update your redirect URIs with the updated values below:</p>
+  <p>Register these redirect URIs in the provider dashboards:</p>
+  <ul>
+    <li>
+      <b>Twitch:</b>
+      <span id="twitch-redirect-uri">{{TWITCH_REDIRECT_URI}}</span>
+      <button
+        onclick="copyText('twitch-redirect-uri', 'twitchToolTip')"
+        onmouseout="resetTooltip('twitchToolTip')"
+      >
+        <span class="tooltiptext" id="twitchToolTip">Copy to clipboard</span>
+        Copy text
+      </button>
+    </li>
+  
+    <li>
+      <b>Spotify:</b>
+      <span id="spotify-redirect-uri">{{SPOTIFY_REDIRECT_URI}}</span>
+      <button
+        onclick="copyText('spotify-redirect-uri', 'spotifyToolTip')"
+        onmouseout="resetTooltip('spotifyToolTip')"
+      >
+        <span class="tooltiptext" id="spotifyToolTip">Copy to clipboard</span>
+        Copy text
+      </button>
+    </li>
+  </ul>
+  <p>After obtaining the Client IDs and Client Secrets, enter them below to complete the setup:</p>
+  <form method="POST" action="/setup">
+    <h2>Twitch</h2>
+    <input name="twitchClientId" placeholder="Twitch Client ID" required />
+    <input name="twitchClientSecret" placeholder="Twitch Client Secret" required />
+
+    <h2>Spotify</h2>
+    <input name="spotifyClientId" placeholder="Spotify Client ID" required />
+    <input name="spotifyClientSecret" placeholder="Spotify Client Secret" required />
+
+    <button type="submit">Save & Restart</button>
+  </form>
+</body>
+<script>
+/**
+ * Copies the text content of an HTML element to the clipboard.
+ * Also updates the text content of a tooltip element to display "Copied!".
+ * @param {string} sourceId - The id of the HTML element containing the text to copy.
+ * @param {string} tooltipId - The id of the tooltip element to update.
+ */
+  function copyText(sourceId, tooltipId) {
+    const text = document.getElementById(sourceId).textContent.trim();
+    navigator.clipboard.writeText(text);
+    document.getElementById(tooltipId).textContent = "Copied!";
+  }
+
+  function resetTooltip(tooltipId) {
+    document.getElementById(tooltipId).textContent = "Copy to clipboard";
+  }
+</script>
+</html>
