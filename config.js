@@ -9,7 +9,17 @@ async function loadConfig(configPath = 'spotipack_config.yaml') {
 
     // optionally: validate config schema here
 
-    return config;
+    // Set default express_host if not specified
+  if (!config.express_host) {
+    config.express_host = 'spottybotty.local';
+  }
+
+  // Set default oauth_host if not specified
+  if (!config.oauth_host) {
+    config.oauth_host = 'localhost';  // Use localhost for OAuth compatibility
+  }
+
+  return config;
 }
 
 module.exports = loadConfig;

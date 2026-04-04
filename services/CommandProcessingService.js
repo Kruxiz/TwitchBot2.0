@@ -1,13 +1,15 @@
 // services/CommandProcessingService.js
 
 const { isUserEligible } = require('../utils/utils');
+const DomainEvents = require('../core/DomainEvents');
 
 /**
  * CommandProcessingService - Orchestrates command processing and execution
  * Handles command registration, routing, user validation, and cooldown management
  */
 class CommandProcessingService {
-  constructor(twitchChatService, spotifyServices, config) {
+  constructor(eventBus, twitchChatService, spotifyServices, config) {
+    this.eventBus = eventBus;
     this.twitchChat = twitchChatService;
     this.spotifyPlayer = spotifyServices.player;
     this.spotifyQueue = spotifyServices.queue;
@@ -21,26 +23,37 @@ class CommandProcessingService {
   }
 
   /**
+   * Emits an event via EventBus
+   * @param {string} event - DomainEvents.* constant
+   * @param {Object} data - Event payload
+   */
+  emit(event, data) {
+    if (this.eventBus) {
+      this.eventBus.emit(event, data);
+    }
+  }
+
+  /**
    * Sets up event listeners for Twitch chat events
    */
   setupEventListeners() {
     // Listen for chat messages
-    this.twitchChat.on('message', async (data) => {
+    this.eventBus.on(DomainEvents.Twitch.MessageReceived, async (data) => {
       await this.handleMessage(data);
     });
 
     // Listen for cheers
-    this.twitchChat.on('cheer', async (data) => {
+    this.eventBus.on(DomainEvents.Twitch.UserCheered, async (data) => {
       await this.handleCheer(data);
     });
 
     // Listen for subscriptions
-    this.twitchChat.on('subscription', async (data) => {
+    this.eventBus.on(DomainEvents.Twitch.UserSubscribed, async (data) => {
       await this.handleSubscription(data);
     });
 
     // Listen for resubscriptions
-    this.twitchChat.on('resub', async (data) => {
+    this.eventBus.on(DomainEvents.Twitch.UserResubscribed, async (data) => {
       await this.handleResub(data);
     });
   }
