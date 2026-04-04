@@ -130,3 +130,5 @@ tokens/
 tests/
 spotipack_config.yaml
 secrets.json
+architecture/
+.gitignore
