@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spotibot Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .array-input {
+      margin-bottom: 1rem;
+    }
+
+    /* Extra spacing between sections */
+    h2,
+    h4,
+    h5 {
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Extra padding for grouped sections */
+    .section {
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      background: #fff;
+      border-radius: 0.75rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Bot control button styles */
+    #toggleBotBtn:disabled,
+    #checkUpdatesBtn:disabled,
+    #createBackupBtn:disabled,
+    #restartBotBtn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Code/log output styling */
+    .code-like {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid #dee2e6;
+    }
+  </style>
+</head>
+
+<body class="bg-light">
+  <div class="container py-5">
+    <h1 class="mb-4">Spotibot Configuration Dashboard</h1>
+
+    <!-- Bot Control Panel -->
+    <div class="section" id="botControlSection">
+      <h4>Bot Control</h4>
+      <div class="d-flex align-items-center mb-3">
+        <div id="botStatus" class="me-3">
+          <span class="badge bg-secondary">Loading...</span>
+        </div>
+        <button id="toggleBotBtn" class="btn btn-sm" disabled>
+          Loading...
+        </button>
+      </div>
+      <div id="connectionStatus" class="small text-muted">
+        Connections: <span id="twitchStatus">Disconnected</span> |
+        <span id="spotifyStatus">Disconnected</span>
+      </div>
+    </div>
+
+    <!-- Updates Section -->
+    <div class="section" id="updatesSection">
+      <h4>Updates & Maintenance</h4>
+      <div class="d-flex align-items-center mb-3">
+        <div id="updateStatus" class="me-3">
+          <span class="badge bg-secondary">Checking...</span>
+        </div>
+        <div>
+          <button id="checkUpdatesBtn" class="btn btn-sm btn-primary">Check for Updates</button>
+          <button id="createBackupBtn" class="btn btn-sm btn-secondary ms-2">Create Backup</button>
+          <button id="restartBotBtn" class="btn btn-sm btn-warning ms-2">Restart Bot</button>
+        </div>
+      </div>
+      <div id="updateDetails" class="small" style="display: none; margin-top: 10px;">
+        <div>Current: <span id="currentVersion" class="text-muted">Unknown</span></div>
+        <div>Latest: <span id="latestVersion" class="text-muted">Unknown</span></div>
+        <div id="releaseNotes" class="mt-2 p-2 bg-light rounded code-like"></div>
+      </div>
+      <div id="backupResult" class="small text-success" style="display: none; margin-top: 10px;"></div>
+    </div>
+
+    <form id="dashboardForm" method="POST" action="/dashboard">    <form id="dashboardForm" method="POST" action="/dashboard">
+
+      <!-- Bot Configuration -->
+      <div class="section">
+        <h4>Bot Configuration</h4>
+        <div class="mb-3">
+          <label class="form-label">Twitch Username</label>
+          <input class="form-control" name="user_name" value="{{user_name}}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Channel Name</label>
+          <input class="form-control" name="channel_name" value="{{channel_name}}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Custom Reward ID</label>
+          <input class="form-control" name="custom_reward_id" value="{{custom_reward_id}}">
+        </div>
+        <div class="form-check mb-3">
+          <input type="checkbox" class="form-check-input" name="logs" {{logs_checked}}>
+          <label class="form-check-label">Enable Logs</label>
+        </div>
+      </div>
+
+      <!-- Usage Settings -->
+      <div class="section">
+        <h4>Usage Settings</h4>
+        <div class="mb-3">
+          <label class="form-label">Usage Types</label>
+          <select multiple class="form-select" name="usage_types">
+            {{usage_type_options}}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Max Duration (seconds)</label>
+          <input type="number" class="form-control" name="max_duration" value="{{max_duration}}">
+        </div>
+        <div>
+          <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" name="disable_duplicates_in_queue" {{disable_duplicates_in_queue_checked}}>
+            <label class="form-check-label">Disable Duplicate Songs in Queue</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Redemption Settings -->
+      <div class="section">
+        <h2>Redemption Settings</h2>
+        <h4>Automatic Redemption Management</h4>
+        <div class="form-check mb-3">
+          <input type="checkbox" class="form-check-input" name="redemption_management" {{automatic_redemption_checked}}>
+          <label class="form-check-label">Enable Channel Point Management</label>
+        </div>
+      </div>
+
+      <!-- Commands Section -->
+      <div class="section">
+        <h2>Command Settings</h2>
+        <h5>Current Song Command</h5>
+        <div class="form-check mb-3">
+          <input type="checkbox" class="form-check-input" name="use_song_command" {{use_song_command_checked}}>
+          <label class="form-check-label">Enable !song</label>
+        </div>
+
+        <h5>Song Request Command</h5>
+        <div class="mb-3">
+          <label class="form-label">!songrequest Aliases (comma separated)</label>
+          <input class="form-control" name="command_alias" value="{{command_alias}}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label d-block">!songrequest Command User Levels</label>
+          <div class="user-level-checkboxes">
+            {{user_level_options_song}}
+          </div>
+        </div>
+
+        <h5>Queue Command</h5>
+        <div class="form-check mb-3">
+          <input type="checkbox" class="form-check-input" name="use_queue_command" {{use_queue_command_checked}}>
+          <label class="form-check-label">Enable !queue</label>
+        </div>
+        <div class="mb-3">
+          <label class="form-label d-block">!queue Command User Levels</label>
+          <div class="user-level-checkboxes">
+            {{user_level_options_queue}}
+          </div>
+        </div>
+
+        <h5>Recently Played Songs Command</h5>
+        <div class="form-check mb-3">
+          <input type="checkbox" class="form-check-input" name="use_history_command" {{use_history_command_checked}}>
+          <label class="form-check-label">Enable !history</label>
+        </div>
+        <div class="mb-3">
+          <label class="form-label d-block">!history Command User Levels</label>
+          <div class="user-level-checkboxes">
+            {{user_level_options_history}}
+          </div>
+        </div>
+
+        <h5>Skip Song Command</h5>
+        <div class="form-check mb-3">
+          <input type="checkbox" class="form-check-input" name="use_skip_command" {{use_skip_command_checked}}>
+          <label class="form-check-label">Enable !skip</label>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Skip Aliases (comma separated)</label>
+          <input class="form-control" name="skip_alias" value="{{skip_alias}}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label d-block">!skip Command User Levels</label>
+          <div class="user-level-checkboxes">
+            {{user_level_options_skip}}
+          </div>
+        </div>
+      </div>
+
+      <!-- Blocked Tracks -->
+      <div class="section">
+        <h4>Blocked Tracks</h4>
+        <div class="mb-3">
+          <label class="form-label">Blocked Track IDs (comma separated)</label>
+          <input class="form-control" name="blocked_tracks" value="{{blocked_tracks}}">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary mt-3">Save Settings</button>
+    </form>
+  </div>
+
+  <!-- Bot Control JavaScript -->
+  <script>
+    // Poll bot status every 5 seconds
+    async function updateBotStatus() {
+      try {
+        const response = await fetch('/dashboard/api/bot/status');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.status}`);
+        }
+
+        const status = await response.json();
+
+        const statusBadge = document.getElementById('botStatus');
+        const toggleBtn = document.getElementById('toggleBotBtn');
+
+        if (status.isRunning) {
+          statusBadge.innerHTML = '<span class="badge bg-success">🟢 Running</span>';
+          toggleBtn.textContent = 'Stop Bot';
+          toggleBtn.className = 'btn btn-sm btn-danger';
+          toggleBtn.disabled = false;
+        } else {
+          statusBadge.innerHTML = '<span class="badge bg-danger">🔴 Stopped</span>';
+          toggleBtn.textContent = 'Start Bot';
+          toggleBtn.className = 'btn btn-sm btn-success';
+          toggleBtn.disabled = false;
+        }
+
+        document.getElementById('twitchStatus').textContent =
+          status.twitchConnected ? '✅ Connected' : '❌ Disconnected';
+        document.getElementById('spotifyStatus').textContent =
+          status.spotifyConnected ? '✅ Connected' : '❌ Disconnected';
+      } catch (error) {
+        console.error('Failed to get bot status:', error);
+        const statusBadge = document.getElementById('botStatus');
+        statusBadge.innerHTML = '<span class="badge bg-secondary">⚠️ Error</span>';
+        document.getElementById('toggleBotBtn').disabled = true;
+      }
+    }
+
+    // Handle button clicks
+    document.getElementById('toggleBotBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('toggleBotBtn');
+      const isRunning = btn.textContent.includes('Stop');
+
+      btn.disabled = true;
+      btn.textContent = isRunning ? 'Stopping...' : 'Starting...';
+
+      const endpoint = isRunning ? '/dashboard/api/bot/stop' : '/dashboard/api/bot/start';
+
+      try {
+        const response = await fetch(endpoint, { method: 'POST' });
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Failed to control bot');
+        }
+
+      } catch (error) {
+        console.error('Error:', error);
+        alert(`Failed to control bot: ${error.message}`);
+      } finally {
+        updateBotStatus();
+      }
+    });
+
+    // Initial load and interval
+    updateBotStatus();
+    setInterval(updateBotStatus, 5000);
+  </script>
+</body>
+
+</html>
