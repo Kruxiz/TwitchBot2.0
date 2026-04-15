@@ -27,13 +27,72 @@
       border-radius: 0.75rem;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
     }
+
+    /* Bot control button styles */
+    #toggleBotBtn:disabled,
+    #checkUpdatesBtn:disabled,
+    #createBackupBtn:disabled,
+    #restartBotBtn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Code/log output styling */
+    .code-like {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid #dee2e6;
+    }
   </style>
 </head>
 
 <body class="bg-light">
   <div class="container py-5">
     <h1 class="mb-4">Spotibot Configuration Dashboard</h1>
-    <form id="dashboardForm" method="POST" action="/dashboard">
+
+    <!-- Bot Control Panel -->
+    <div class="section" id="botControlSection">
+      <h4>Bot Control</h4>
+      <div class="d-flex align-items-center mb-3">
+        <div id="botStatus" class="me-3">
+          <span class="badge bg-secondary">Loading...</span>
+        </div>
+        <button id="toggleBotBtn" class="btn btn-sm" disabled>
+          Loading...
+        </button>
+      </div>
+      <div id="connectionStatus" class="small text-muted">
+        Connections: <span id="twitchStatus">Disconnected</span> |
+        <span id="spotifyStatus">Disconnected</span>
+      </div>
+    </div>
+
+    <!-- Updates Section -->
+    <div class="section" id="updatesSection">
+      <h4>Updates & Maintenance</h4>
+      <div class="d-flex align-items-center mb-3">
+        <div id="updateStatus" class="me-3">
+          <span class="badge bg-secondary">Checking...</span>
+        </div>
+        <div>
+          <button id="checkUpdatesBtn" class="btn btn-sm btn-primary">Check for Updates</button>
+          <button id="createBackupBtn" class="btn btn-sm btn-secondary ms-2">Create Backup</button>
+          <button id="restartBotBtn" class="btn btn-sm btn-warning ms-2">Restart Bot</button>
+        </div>
+      </div>
+      <div id="updateDetails" class="small" style="display: none; margin-top: 10px;">
+        <div>Current: <span id="currentVersion" class="text-muted">Unknown</span></div>
+        <div>Latest: <span id="latestVersion" class="text-muted">Unknown</span></div>
+        <div id="releaseNotes" class="mt-2 p-2 bg-light rounded code-like"></div>
+      </div>
+      <div id="backupResult" class="small text-success" style="display: none; margin-top: 10px;"></div>
+    </div>
+
+    <form id="dashboardForm" method="POST" action="/dashboard">    <form id="dashboardForm" method="POST" action="/dashboard">
 
       <!-- Bot Configuration -->
       <div class="section">
@@ -73,6 +132,7 @@
           <div class="form-check mb-3">
             <input type="checkbox" class="form-check-input" name="disable_duplicates_in_queue" {{disable_duplicates_in_queue_checked}}>
             <label class="form-check-label">Disable Duplicate Songs in Queue</label>
+          </div>
         </div>
       </div>
 
@@ -160,6 +220,186 @@
       <button type="submit" class="btn btn-primary mt-3">Save Settings</button>
     </form>
   </div>
+
+  <!-- Bot Control JavaScript -->
+  <script>
+    // Poll bot status every 5 seconds
+    async function updateBotStatus() {
+      try {
+        const response = await fetch('/dashboard/api/bot/status');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.status}`);
+        }
+
+        const status = await response.json();
+
+        const statusBadge = document.getElementById('botStatus');
+        const toggleBtn = document.getElementById('toggleBotBtn');
+
+        if (status.isRunning) {
+          statusBadge.innerHTML = '<span class="badge bg-success">🟢 Running</span>';
+          toggleBtn.textContent = 'Stop Bot';
+          toggleBtn.className = 'btn btn-sm btn-danger';
+          toggleBtn.disabled = false;
+        } else {
+          statusBadge.innerHTML = '<span class="badge bg-danger">🔴 Stopped</span>';
+          toggleBtn.textContent = 'Start Bot';
+          toggleBtn.className = 'btn btn-sm btn-success';
+          toggleBtn.disabled = false;
+        }
+
+        document.getElementById('twitchStatus').textContent =
+          status.twitchConnected ? '✅ Connected' : '❌ Disconnected';
+        document.getElementById('spotifyStatus').textContent =
+          status.spotifyConnected ? '✅ Connected' : '❌ Disconnected';
+      } catch (error) {
+        console.error('Failed to get bot status:', error);
+        const statusBadge = document.getElementById('botStatus');
+        statusBadge.innerHTML = '<span class="badge bg-secondary">⚠️ Error</span>';
+        document.getElementById('toggleBotBtn').disabled = true;
+      }
+    }
+
+    // Handle button clicks
+    document.getElementById('toggleBotBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('toggleBotBtn');
+      const isRunning = btn.textContent.includes('Stop');
+
+      btn.disabled = true;
+      btn.textContent = isRunning ? 'Stopping...' : 'Starting...';
+
+      const endpoint = isRunning ? '/dashboard/api/bot/stop' : '/dashboard/api/bot/start';
+
+      try {
+        const response = await fetch(endpoint, { method: 'POST' });
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Failed to control bot');
+        }
+
+      } catch (error) {
+        console.error('Error:', error);
+        alert(`Failed to control bot: ${error.message}`);
+      } finally {
+        updateBotStatus();
+      }
+    });
+
+    // Initial load and interval
+    updateBotStatus();
+    setInterval(updateBotStatus, 5000);
+// Updates Section JavaScript
+
+// Update status display
+function updateUpdateStatus(message, type = 'secondary') {
+  const statusBadge = document.getElementById('updateStatus');
+  statusBadge.innerHTML = `<span class="badge bg-${type}">${message}</span>`;
+}
+
+// Check for updates
+document.getElementById('checkUpdatesBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('checkUpdatesBtn');
+  btn.disabled = true;
+  btn.textContent = 'Checking...';
+  updateUpdateStatus('Checking for updates...', 'info');
+
+  try {
+    const response = await fetch('/dashboard/api/updates/check');
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to check for updates');
+    }
+
+    document.getElementById('currentVersion').textContent = result.currentVersion || 'Unknown';
+
+    if (result.hasUpdate) {
+      updateUpdateStatus('🟢 Update available!', 'success');
+      document.getElementById('latestVersion').textContent = result.latestVersion || 'Unknown';
+      document.getElementById('releaseNotes').textContent = result.releaseNotes || 'No release notes';
+      document.getElementById('updateDetails').style.display = 'block';
+    } else {
+      updateUpdateStatus('✅ Up to date', 'success');
+      document.getElementById('latestVersion').textContent = result.currentVersion || 'Unknown';
+      document.getElementById('updateDetails').style.display = 'none';
+    }
+
+    if (result.error) {
+      updateUpdateStatus('⚠️ Check failed', 'warning');
+    }
+
+  } catch (error) {
+    console.error('Failed to check for updates:', error);
+    updateUpdateStatus('❌ Error', 'danger');
+    alert(`Failed to check for updates: ${error.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Check for Updates';
+  }
+});
+
+// Create backup
+document.getElementById('createBackupBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('createBackupBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
+  try {
+    const response = await fetch('/dashboard/api/updates/backup', { method: 'POST' });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Backup failed');
+    }
+
+    const resultDiv = document.getElementById('backupResult');
+    resultDiv.textContent = `✅ Backup created: ${result.backupDir || 'Unknown location'}`;
+    resultDiv.style.display = 'block';
+
+    setTimeout(() => {
+      resultDiv.style.display = 'none';
+    }, 5000);
+
+  } catch (error) {
+    console.error('Backup failed:', error);
+    alert(`Backup failed: ${error.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Backup';
+  }
+});
+
+// Restart bot
+document.getElementById('restartBotBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('restartBotBtn');
+  btn.disabled = true;
+  btn.textContent = 'Restarting...';
+
+  try {
+    const response = await fetch('/dashboard/api/updates/restart', { method: 'POST' });
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Restart failed');
+    }
+
+  } catch (error) {
+    console.error('Restart failed:', error);
+    alert(`Restart failed: ${error.message}`);
+  } finally {
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Restart Bot';
+    }, 3000);
+  }
+});
+
+// Check for updates on initial load
+setTimeout(() => {
+  document.getElementById('checkUpdatesBtn').dispatchEvent(new Event('click'));
+}, 1000);
+  </script>
 </body>
 
 </html>
