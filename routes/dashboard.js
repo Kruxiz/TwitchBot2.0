@@ -8,9 +8,6 @@ const yaml = require('js-yaml');
  * Dashboard routes for configuration management
  * GET /dashboard - Show dashboard page
  * POST /dashboard - Update configuration based on form submission
- * GET /api/bot/status - Get bot status
- * POST /api/bot/start - Start bot
- * POST /api/bot/stop - Stop bot
  */
 module.exports = function dashboardRoutes(config) {
   const express = require('express');
@@ -74,135 +71,17 @@ module.exports = function dashboardRoutes(config) {
     }
   });
 
-  /**
-   * GET /api/bot/status
-   * Get current bot status
-   */
-  router.get('/api/bot/status', async (req, res) => {
-    try {
-      const botStateManager = req.app.locals.botStateManager;
-      if (!botStateManager) {
-        return res.status(503).json({ error: 'BotStateManager not initialized' });
-      }
-      const status = botStateManager.getStatus();
-      res.json(status);
-    } catch (error) {
-      console.error('❌ Failed to get bot status:', error);
-      res.status(500).json({ error: 'Failed to get bot status' });
-    }
-  });
-
-  /**
-   * POST /api/bot/start
-   * Start bot services
-   */
-  router.post('/api/bot/start', async (req, res) => {
-    try {
-      const botStateManager = req.app.locals.botStateManager;
-      if (!botStateManager) {
-        return res.status(503).json({ success: false, error: 'BotStateManager not initialized' });
-      }
-
-      await botStateManager.startBot();
-      res.json({ success: true, message: 'Bot started successfully' });
-    } catch (error) {
-      console.error('❌ Failed to start bot:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  /**
-   * POST /api/bot/stop
-   * Stop bot services
-   */
-  router.post('/api/bot/stop', async (req, res) => {
-    try {
-      const botStateManager = req.app.locals.botStateManager;
-      if (!botStateManager) {
-        return res.status(503).json({ success: false, error: 'BotStateManager not initialized' });
-      }
-
-      await botStateManager.stopBot();
-      res.json({ success: true, message: 'Bot stopped successfully' });
-    } catch (error) {
-      console.error('❌ Failed to stop bot:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  /**
-   * GET /api/updates/check
-   * Check for available updates
-   */
-  router.get('/api/updates/check', async (req, res) => {
-    try {
-      const UpdateService = require('../core/UpdateService');
-      const updateService = new UpdateService();
-      const updateInfo = await updateService.checkForUpdates();
-      res.json(updateInfo);
-    } catch (error) {
-      console.error('❌ Failed to check for updates:', error);
-      res.status(500).json({ error: 'Update check failed', details: error.message });
-    }
-  });
-
-  /**
-   * POST /api/updates/backup
-   * Create backup before update
-   */
-  router.post('/api/updates/backup', (req, res) => {
-    try {
-      const UpdateService = require('../core/UpdateService');
-      const updateService = new UpdateService();
-      const backupDir = updateService.createBackup();
-      res.json({ success: true, backupDir: backupDir, message: 'Backup created successfully' });
-    } catch (error) {
-      console.error('❌ Failed to create backup:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  /**
-   * POST /api/updates/restart
-   * Restart bot after update
-   */
-  router.post('/api/updates/restart', async (req, res) => {
-    try {
-      const botStateManager = req.app.locals.botStateManager;
-      if (!botStateManager) {
-        return res.status(503).json({ success: false, error: 'BotStateManager not initialized' });
-      }
-
-      if (botStateManager.isBotRunning) {
-        await botStateManager.stopBot();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
-      await botStateManager.startBot();
-      res.json({ success: true, message: 'Bot restarted successfully' });
-    } catch (error) {
-      console.error('❌ Failed to restart bot:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
   return router;
 };
-
-// Helper functions below
 
 /**
  * Saves configuration to YAML file
  * @param {object} config - Configuration object
  */
 function saveConfig(config) {
-  // Create a copy without botState to avoid contaminating config
-  const configToSave = { ...config };
-  delete configToSave.botState;
-
   fs.writeFileSync(
     'spotipack_config.yaml',
-    yaml.dump(configToSave, { indent: 2 }),
+    yaml.dump(config, { indent: 2 }),
     'utf8'
   );
 }
@@ -285,7 +164,16 @@ function renderUserLevelOptions(config) {
   function renderOptions(levels, selectedArray, prefix) {
     const selected = Array.isArray(selectedArray) ? selectedArray : [];
     return levels
-      .map((level) => `      <div class="form-check">        <input class="form-check-input" type="checkbox"          name="${prefix}_levels" value="${level}" id="${prefix}_level_${level}"          ${selected.includes(level) ? 'checked' : ''}>        <label class="form-check-label" for="${prefix}_level_${level}">          ${level.charAt(0).toUpperCase() + level.slice(1)}        </label>      </div>`)
+      .map((level) => `
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox"
+            name="${prefix}_levels" value="${level}" id="${prefix}_level_${level}"
+            ${selected.includes(level) ? 'checked' : ''}>
+          <label class="form-check-label" for="${prefix}_level_${level}">
+            ${level.charAt(0).toUpperCase() + level.slice(1)}
+          </label>
+        </div>
+      `)
       .join('');
   }
 }
@@ -299,6 +187,10 @@ function renderUsageTypeOptions(config) {
   const usageTypes = ['command', 'channel_points', 'bits'];
 
   return usageTypes
-    .map(t => `      <option value="${t}" ${(config.usage_types || []).includes(t) ? 'selected' : ''}>        ${t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}      </option>`)
+    .map(t => `
+      <option value="${t}" ${(config.usage_types || []).includes(t) ? 'selected' : ''}>
+        ${t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}
+      </option>
+    `)
     .join('');
 }
