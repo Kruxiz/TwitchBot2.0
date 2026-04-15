@@ -128,7 +128,6 @@ controllers/twitch_token.json
 jest.config.js
 tokens/
 tests/
-spotipack_config.yaml
 secrets.json
 architecture/
 .gitignore
@@ -138,3 +137,5 @@ CREATE-STARTUP-SHORTCUT.bat
 PM2_USAGE.md
 SERVICE.md
 .claude/settings.local.json
+bot_state.json
+spotipack_config.yaml
