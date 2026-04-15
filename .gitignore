@@ -132,3 +132,9 @@ spotipack_config.yaml
 secrets.json
 architecture/
 .gitignore
+ARCHITECTURE.md
+AUTOSTART-SETUP.bat
+CREATE-STARTUP-SHORTCUT.bat
+PM2_USAGE.md
+SERVICE.md
+.claude/settings.local.json

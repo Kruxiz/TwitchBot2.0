@@ -167,8 +167,8 @@ function renderUserLevelOptions(config) {
       .map((level) => `
         <div class="form-check">
           <input class="form-check-input" type="checkbox"
-                 name="${prefix}_levels" value="${level}" id="${prefix}_level_${level}"
-                 ${selected.includes(level) ? 'checked' : ''}>
+            name="${prefix}_levels" value="${level}" id="${prefix}_level_${level}"
+            ${selected.includes(level) ? 'checked' : ''}>
           <label class="form-check-label" for="${prefix}_level_${level}">
             ${level.charAt(0).toUpperCase() + level.slice(1)}
           </label>

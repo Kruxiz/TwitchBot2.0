@@ -1,9 +1,6 @@
 user_name: Kruxiz
 channel_name: Kruxiz
-express_port: 8888
-# express_host: spottybotty.local  # Custom URL for accessing the dashboard (add to hosts file)
-# oauth_host: localhost            # OAuth redirect host - keep as localhost for Twitch/Spotify compatibility
-logs: true
+logs: false
 usage_types:
   - command
   - channel_points
@@ -20,7 +17,6 @@ custom_reward_name: Song Request
 custom_reward_cost: 500
 automatic_refunds: true
 command_alias:
-  - '!songrequest'
   - '!sr'
 command_user_level:
   - everyone
@@ -31,7 +27,7 @@ ignore_max_length:
 use_cooldown: false
 cooldown_duration: 60
 blocked_tracks: []
-use_queue_command: true
+use_queue_command: false
 disable_duplicates_in_queue: true
 queue_display_depth: 5
 queue_user_level:
@@ -43,8 +39,10 @@ history_display_depth: 5
 use_skip_command: true
 skip_alias:
   - '!skip'
+  - '!next'
 skip_user_level:
   - streamer
+  - mod
 minimum_required_bits: 1
 use_exact_amount_of_bits: false
 allow_vote_skip: true
@@ -58,3 +56,5 @@ clip_user_level:
   - streamer
   - mod
   - vip
+express_host: spottybotty.local
+oauth_host: localhost

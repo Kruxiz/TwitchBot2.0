@@ -1,6 +1,5 @@
 user_name: REPLACE_THIS                # Name of the user you are connecting as (messages will be sent via this user)
 channel_name: Replace_THIS             # Name of the channel this bot is working on (can be same as the user name, if the streamer wants to post messages as himself)
-express_port: 8888
 logs: true
 usage_types:
   - command
@@ -13,7 +12,7 @@ song_not_found: Sorry, I was unable to find that song on Spotify.
 added_to_queue_messages:
   - '"$(artists) - $(trackName)" is added to the queue catJAM'
 max_duration: 300
-custom_reward_id: adf08c5e-73da-4e4c-8e5f-4ed1b25d98ef
+custom_reward_id: 
 custom_reward_name: Song Request
 custom_reward_cost: 500
 automatic_refunds: true
@@ -66,3 +65,5 @@ clip_user_level:
   - streamer
   - mod
   - vip
+express_host: spottybotty.local
+oauth_host: localhost
