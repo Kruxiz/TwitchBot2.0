@@ -1,7 +1,15 @@
+// core/Application.js
+
 const express = require('express');
 const EventBus = require('./EventBus');
 const RecoveryManager = require('../errors/RecoveryManager');
-const BotStateManager = require('./BotStateManager');
+const TwitchAuthService = require('../services/twitch/TwitchAuthService');
+const TwitchChatService = require('../services/twitch/TwitchChatService');
+const TwitchRewardService = require('../services/twitch/TwitchRewardService');
+const SpotifyAuthService = require('../services/spotify/SpotifyAuthService');
+const SpotifyPlayerService = require('../services/spotify/SpotifyPlayerService');
+const SpotifyQueueService = require('../services/spotify/SpotifyQueueService');
+const CommandProcessingService = require('../services/CommandProcessingService');
 
 /**
  * Application Orchestrator
@@ -16,21 +24,16 @@ class Application {
     this.chatClient = null;
     this.server = null;
     this.isRunning = false;
-    this.eventBus = null;
-    this.recoveryManager = null;
-    this.botStateManager = null;
   }
 
   /**
    * Starts the application
-   * Always starts web server and RecoveryManager
-   * Bot services start based on auto_start_bot config or manual control
    * If secrets are invalid, starts in setup-only mode
+   * Otherwise, starts full application with all services
    * @param {number} port - Port to listen on (default: 8888)
    */
   async start(port = 8888) {
     console.log('🚀 Starting Spotty Botty...');
-    console.log('📊 Dashboard will be available at all times');
 
     // Check if setup is required
     if (!this.hasValidSecrets()) {
@@ -40,51 +43,10 @@ class Application {
     }
 
     // Normal startup
-    console.log('✅ Secrets valid, starting application...');
+    console.log('✅ Secrets valid, starting full application...');
+    await this.bootstrap();
 
-    // Always create eventBus and RecoveryManager
-    console.log('🔔 Creating EventBus and RecoveryManager...');
-    this.eventBus = new EventBus();
-    this.recoveryManager = new RecoveryManager(this.eventBus);
-
-    // Always create Express app and register routes
-    this.createExpressApp();
-    this.setupMiddleware();
-    this.registerRoutes();
-
-    // Create and initialize BotStateManager
-    this.botStateManager = new BotStateManager(this, this.config);
-    await this.botStateManager.initialize();
-
-    // Start HTTP server (always running)
-    this.startWebServer(port);
-
-    // Make BotStateManager available to routes
-    this.expressApp.locals.botStateManager = this.botStateManager;
-
-    // Start bot services if auto_start_bot is true OR if saved state was running
-    const savedState = this.config.botState;
-    const shouldAutoStart = savedState
-      ? savedState.isRunning && savedState.isRunning === true
-      : this.config.auto_start_bot === true;
-
-    if (shouldAutoStart) {
-      console.log('🤖 Auto-starting bot services...');
-      await this.botStateManager.startBot();
-    } else {
-      console.log('🤖 Bot services will start manually from dashboard');
-      console.log('📊 Visit http://localhost:8888/dashboard to control the bot');
-    }
-
-    // Handle graceful shutdown
-    this.setupShutdownHandlers();
-  }
-
-  /**
-   * Starts the web server
-   * Always available
-   */
-  startWebServer(port) {
+    // Start HTTP server
     const host = this.config.express_host || 'localhost';
     this.server = this.expressApp.listen(port, () => {
       console.log(`🌐 Express server running at http://${host}:${port}`);
@@ -92,6 +54,39 @@ class Application {
       console.log(`🎵 Overlay available at http://${host}:${port}/now-playing`);
       this.isRunning = true;
     });
+
+    // Handle graceful shutdown
+    this.setupShutdownHandlers();
+  }
+
+  /**
+   * Bootstraps the full application
+   * Creates services, registers routes, connects clients
+   */
+  async bootstrap() {
+    // 0. Create EventBus and RecoveryManager (Phase 3) 
+    console.log('🔔 Creating EventBus and RecoveryManager...'); 
+    this.eventBus = new EventBus(); 
+    this.recoveryManager = new RecoveryManager(this.eventBus);
+
+    // 1. Create Express app and setup middleware
+    this.createExpressApp();
+    this.setupMiddleware();
+
+    // 2. Create and register services
+    await this.createServices();
+
+    // 3. Register routes
+    this.registerRoutes();
+
+    // 4. Connect to external services (OAuth flow)
+    await this.connectExternalServices();
+
+    // 5. Connect Twitch chat and register event handlers
+    await this.connectTwitchChat();
+    this.registerEventHandlers();
+
+    console.log('✅ Application bootstrap complete');
   }
 
   /**
@@ -125,10 +120,67 @@ class Application {
   }
 
   /**
+   * Creates service instances for Phase 3 architecture
+   */
+  async createServices() {
+    console.log('🔧 Creating services...');
+
+    const oauthBaseUrl = `http://${this.config.oauth_host || 'localhost'}:${this.config.express_port || 8888}`;
+
+    // Create auth services
+    const twitchAuth = new TwitchAuthService({
+      clientId: this.secrets.twitch.clientId,
+      clientSecret: this.secrets.twitch.clientSecret,
+      redirectUri: `${oauthBaseUrl}/callback/twitch`
+    });
+
+    const spotifyAuth = new SpotifyAuthService({
+      clientId: this.secrets.spotify.clientId,
+      clientSecret: this.secrets.spotify.clientSecret,
+      redirectUri: `${oauthBaseUrl}/callback/spotify`
+    });
+
+    // Create Twitch services (event-driven)
+    this.services.twitchChat = new TwitchChatService(twitchAuth, this.config, this.eventBus);
+    this.services.twitchRewards = new TwitchRewardService(twitchAuth, this.config, this.eventBus);
+
+    // Create Spotify services (event-driven)
+    this.services.spotifyPlayer = new SpotifyPlayerService(spotifyAuth, this.eventBus);
+    this.services.spotifyQueue = new SpotifyQueueService(spotifyAuth, this.eventBus);
+
+    // Create command processor (consumes events from EventBus)
+    this.services.commandProcessor = new CommandProcessingService(
+      this.eventBus,
+      this.services.twitchChat,
+      {
+        player: this.services.spotifyPlayer,
+        queue: this.services.spotifyQueue
+      },
+      this.config
+    );
+
+    // Keep controllers for OAuth routing (delegating to services)
+    const TwitchController = require('../controllers/twitchController');
+    const SpotifyController = require('../controllers/spotifyController');
+    this.services.twitch = new TwitchController({
+      clientId: this.secrets.twitch.clientId,
+      clientSecret: this.secrets.twitch.clientSecret,
+      redirectUri: `http://${this.config.oauth_host || 'localhost'}:${this.config.express_port || 8888}/callback/twitch`
+    });
+    this.services.spotify = new SpotifyController({
+      clientId: this.secrets.spotify.clientId,
+      clientSecret: this.secrets.spotify.clientSecret,
+      redirectUri: `http://${this.config.oauth_host || 'localhost'}:${this.config.express_port || 8888}/callback/spotify`
+    });
+
+    console.log('✅ Services created');
+  }
+
+  /**
    * Registers all application routes
    */
   registerRoutes() {
-    console.log('🛣️ Registering routes...');
+    console.log('🛣️  Registering routes...');
 
     const setupRoutes = require('../routes/setup');
     const configRoutes = require('../routes/config');
@@ -141,10 +193,91 @@ class Application {
     this.expressApp.use('/dashboard', dashboardRoutes(this.config));
     this.expressApp.use('/callback', oauthRoutes(this.services));
 
+    // Controller routes (OAuth, overlay, etc.)
+    this.services.twitch.registerRoutes(this.expressApp);
+    this.services.spotify.registerRoutes(this.expressApp);
+
     // Static assets
     this.expressApp.use(express.static('public'));
 
     console.log('✅ Routes registered');
+  }
+
+  /**
+   * Connects to external services (Twitch and Spotify via OAuth)
+   * Opens browser windows for OAuth if needed
+   */
+  async connectExternalServices() {
+    console.log('🔗 Connecting to external services...');
+    const open = require('open');
+
+    // Wait for OAuth completion
+    const [twitchAuthUrl, spotifyAuthUrl] = await Promise.all([
+      this.services.twitch.getAuthUrlIfNeeded(),
+      this.services.spotify.getAuthUrlIfNeeded()
+    ]);
+
+    // Open OAuth flows if needed
+    if (twitchAuthUrl) {
+      console.log('🔑 Opening Twitch OAuth...');
+      await open(twitchAuthUrl).catch(console.error);
+    }
+
+    if (spotifyAuthUrl) {
+      console.log('🎵 Opening Spotify OAuth...');
+      await open(spotifyAuthUrl).catch(console.error);
+    }
+
+    // Wait for both services to be ready
+    await this.services.twitch.waitUntilReady();
+    await this.services.spotify.waitUntilReady();
+
+    console.log('✅ External services connected');
+  }
+
+  /**
+   * Connects to Twitch chat using tmi.js
+   */
+  async connectTwitchChat() {
+    console.log('💬 Connecting to Twitch chat...');
+
+    const tmi = require('tmi.js');
+    this.chatClient = new tmi.Client({
+      connection: {
+        secure: true,
+        reconnect: true
+      },
+      identity: {
+        username: this.config.user_name,
+        password: `oauth:${this.services.twitch.token}`
+      },
+      channels: [this.config.channel_name]
+    });
+
+    // Initialize Twitch features (channel points, etc.)
+    await this.services.twitch.init(this.config);
+
+    // Connect to chat
+    await this.chatClient.connect();
+
+    console.log(`✅ Connected to Twitch as ${this.config.user_name} in #${this.config.channel_name}`);
+  }
+
+  /**
+   * Registers event handlers for Twitch chat
+   */
+  registerEventHandlers() {
+    console.log('🎧 Registering event handlers...');
+
+    const registerEventHandlers = require('../eventHandlers');
+    registerEventHandlers(
+      this.chatClient,
+      this.services.twitch,
+      this.services.spotify,
+      this.config
+    );
+
+    console.log('✅ Event handlers registered');
   }
 
   /**
@@ -218,13 +351,13 @@ class Application {
   async stop() {
     console.log('🛑 Stopping application...');
 
-    // Stop bot services first
-    if (this.botStateManager && this.botStateManager.isBotRunning) {
-      console.log('🛑 Stopping bot services...');
-      await this.botStateManager.stopBot();
+    // Disconnect Twitch chat
+    if (this.chatClient) {
+      console.log('💬 Disconnecting from Twitch chat...');
+      await this.chatClient.disconnect().catch(console.error);
     }
 
-    // Close HTTP server (web interface)
+    // Close HTTP server
     if (this.server) {
       console.log('🌐 Closing HTTP server...');
       await new Promise(resolve => {
