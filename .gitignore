@@ -138,3 +138,5 @@ CREATE-STARTUP-SHORTCUT.bat
 PM2_USAGE.md
 SERVICE.md
 .claude/settings.local.json
+bot_state.json
+spotipack_config.yaml
