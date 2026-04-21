@@ -153,6 +153,7 @@ class BotStateManager {
     }
 
     const oauthBaseUrl = `http://${this.config.oauth_host || 'localhost'}:${this.config.express_port || 8888}`;
+    const spotifyoAuthBaseUrl = `http://127.0.0.1:${this.config.express_port || 8888}`;
 
     // Create auth services
     const twitchAuth = new TwitchAuthService({
@@ -164,7 +165,7 @@ class BotStateManager {
     const spotifyAuth = new SpotifyAuthService({
       clientId: this.secrets.spotify.clientId,
       clientSecret: this.secrets.spotify.clientSecret,
-      redirectUri: `${oauthBaseUrl}/callback/spotify`
+      redirectUri: `${spotifyoAuthBaseUrl}/callback/spotify`
     });
 
     // Create Twitch services
@@ -197,36 +198,34 @@ class BotStateManager {
     this.services.spotify = new SpotifyController({
       clientId: this.secrets.spotify.clientId,
       clientSecret: this.secrets.spotify.clientSecret,
-      redirectUri: `${oauthBaseUrl}/callback/spotify`
+      redirectUri: `${spotifyoAuthBaseUrl}/callback/spotify`
     });
 
     console.log('✅ Bot services created');
   }
 
   /**
-   * Connect to external services (OAuth)
+   * Connect to external services (OAuth) - sequentially to avoid concurrency issues
    */
   async _connectExternalServices() {
     console.log('🔗 Connecting to external services...');
     const open = require('open');
 
-    const [twitchAuthUrl, spotifyAuthUrl] = await Promise.all([
-      this.services.twitch.getAuthUrlIfNeeded(),
-      this.services.spotify.getAuthUrlIfNeeded()
-    ]);
-
+    // Process Twitch OAuth first
+    const twitchAuthUrl = await this.services.twitch.getAuthUrlIfNeeded();
     if (twitchAuthUrl) {
       console.log('🔑 Opening Twitch OAuth...');
       await open(twitchAuthUrl).catch(console.error);
+      await this.services.twitch.waitUntilReady();
     }
 
+    // Then process Spotify OAuth after Twitch completes
+    const spotifyAuthUrl = await this.services.spotify.getAuthUrlIfNeeded();
     if (spotifyAuthUrl) {
       console.log('🎵 Opening Spotify OAuth...');
       await open(spotifyAuthUrl).catch(console.error);
+      await this.services.spotify.waitUntilReady();
     }
-
-    await this.services.twitch.waitUntilReady();
-    await this.services.spotify.waitUntilReady();
 
     console.log('✅ External services connected');
   }
@@ -322,6 +321,48 @@ class BotStateManager {
   hasValidSecrets() {
     const { secretsAreValid } = require('../utils/secrets');
     return secretsAreValid(this.secrets);
+  }
+
+  /**
+   * Check if OAuth tokens exist
+   * @returns {object} Token status object with boolean flags
+   */
+  getTokenStatus() {
+    const fs = require('fs');
+    const path = require('path');
+
+    const tokensDir = path.join(process.cwd(), 'tokens');
+    const twitchTokenFile = path.join(tokensDir, 'twitch_token.json');
+    const spotifyTokenFile = path.join(tokensDir, 'spotify_tokens.json');
+
+    const hasTwitchToken = fs.existsSync(twitchTokenFile);
+    const hasSpotifyToken = fs.existsSync(spotifyTokenFile);
+
+    return {
+      hasTwitchToken,
+      hasSpotifyToken,
+      hasAllTokens: hasTwitchToken && hasSpotifyToken
+    };
+  }
+
+  /**
+   * Disconnect tokens (for logout/testing)
+   */
+  async disconnectTokens() {
+    console.log('🔐 Disconnecting OAuth tokens...');
+
+    this.state.twitchConnected = false;
+    this.state.spotifyConnected = false;
+
+    if (this.services.twitch && typeof this.services.twitch.clearTokens === 'function') {
+      this.services.twitch.clearTokens();
+    }
+    if (this.services.spotify && typeof this.services.spotify.clearTokens === 'function') {
+      this.services.spotify.clearTokens();
+    }
+
+    await this.saveState();
+    console.log('✅ Tokens disconnected');
   }
 }
 

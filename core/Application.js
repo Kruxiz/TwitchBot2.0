@@ -62,15 +62,36 @@ class Application {
     // Make BotStateManager available to routes
     this.expressApp.locals.botStateManager = this.botStateManager;
 
+    // Check if OAuth tokens exist before starting bot
+    const tokenStatus = this.botStateManager.getTokenStatus();
+    if (!tokenStatus.hasAllTokens) {
+      console.log('🔐 Missing OAuth tokens despite valid secrets:');
+      if (!tokenStatus.hasTwitchToken) {
+        console.log('  - Twitch token missing');
+      }
+      if (!tokenStatus.hasSpotifyToken) {
+        console.log('  - Spotify token missing');
+      }
+      const open = require('open');
+      const host = this.config.express_host || 'localhost';
+      const url = `http://${host}:${port}/setup`;
+      console.log(`🔗 Please visit ${url} to complete OAuth authentication`);
+      open(url).catch(console.error);
+    }
+
     // Start bot services if auto_start_bot is true OR if saved state was running
     const savedState = this.config.botState;
     const shouldAutoStart = savedState
       ? savedState.isRunning && savedState.isRunning === true
       : this.config.auto_start_bot === true;
 
-    if (shouldAutoStart) {
+    if (shouldAutoStart && tokenStatus.hasAllTokens) {
       console.log('🤖 Auto-starting bot services...');
       await this.botStateManager.startBot();
+    } else if (shouldAutoStart && !tokenStatus.hasAllTokens) {
+      console.log('⚠️ Bot auto-start prevented: missing OAuth tokens');
+      const host = this.config.express_host || 'localhost';
+      console.log(`📊 Visit http://${host}:${port}/setup to authenticate`);
     } else {
       console.log('🤖 Bot services will start manually from dashboard');
       console.log('📊 Visit http://localhost:8888/dashboard to control the bot');

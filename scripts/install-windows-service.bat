@@ -1,6 +1,5 @@
 @echo off
-cd > %TEMP%\botpath.txt
-set /p BOT_PATH=<%TEMP%\botpath.txt
+for %%I in ("%~dp0..") do set "BOT_PATH=%%~fI"
 echo ====================================
 echo Spotty Botty Windows Service Installer
 echo ====================================

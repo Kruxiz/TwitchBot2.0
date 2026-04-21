@@ -17,13 +17,7 @@ module.exports = function oauthRoutes(services = {}) {
     }
 
     try {
-      // Service-specific callback handling
-      if (req.params.service === 'twitch') {
-        await service._handleCallback(req, res);
-      } else {
-        // Spotify callback handled in its controller
-        res.send('OAuth flow completed');
-      }
+      await service._handleCallback(req, res);
     } catch (error) {
       console.error('OAuth callback error:', error);
       res.status(500).send('OAuth failed');

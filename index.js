@@ -27,10 +27,6 @@ async function main() {
     const Application = require('./core/Application');
     const app = new Application(config, secrets);
 
-    // Check for updates
-    const checkForUpdates = require('./updateCheck.js');
-    checkForUpdates();
-
     // Start application
     await app.start(config.express_port || 8888);
 

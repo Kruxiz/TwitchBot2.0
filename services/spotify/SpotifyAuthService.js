@@ -15,6 +15,7 @@ class SpotifyAuthService {
     if (!clientSecret) throw new Error('Spotify clientSecret missing');
     if (!redirectUri) throw new Error('Spotify redirectUri missing');
 
+    console.log('[Spotify] Creating auth service with redirectUri:', redirectUri);
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.redirectUri = redirectUri;
@@ -54,10 +55,14 @@ class SpotifyAuthService {
    */
   async getAuthUrlIfNeeded() {
     if (this.accessToken) {
+      console.log('[Spotify] Access token found, skipping OAuth');
       this._readyResolve(true);
       return null;
     }
-    return this.getAuthUrl();
+    console.log('[Spotify] No access token found, starting OAuth flow');
+    const url = this.getAuthUrl();
+    console.log('[Spotify] Generated auth URL:', url);
+    return url;
   }
 
   /**
@@ -67,6 +72,8 @@ class SpotifyAuthService {
     this._oauthState = crypto.randomBytes(16).toString('hex');
 
     const scope = 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
+
+    console.log('[Spotify] Using redirect URI:', this.redirectUri);
 
     return (
       `https://accounts.spotify.com/authorize` +

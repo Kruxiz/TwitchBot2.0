@@ -249,9 +249,9 @@
         }
 
         document.getElementById('twitchStatus').textContent =
-          status.twitchConnected ? '✅ Connected' : '❌ Disconnected';
+          status.twitchConnected ? 'Twitch: ✅ Connected' : 'Twitch: ❌ Disconnected';
         document.getElementById('spotifyStatus').textContent =
-          status.spotifyConnected ? '✅ Connected' : '❌ Disconnected';
+          status.spotifyConnected ? 'Spotify: ✅ Connected' : 'Spotify: ❌ Disconnected';
       } catch (error) {
         console.error('Failed to get bot status:', error);
         const statusBadge = document.getElementById('botStatus');
